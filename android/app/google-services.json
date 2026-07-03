@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "781186178543",
+    "project_id": "pronouncemate-6f5b6",
+    "storage_bucket": "pronouncemate-6f5b6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:781186178543:android:2aa57c7d8f9b27bcd26a1a",
+        "android_client_info": {
+          "package_name": "com.example.pronouncemate"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "781186178543-u04njdk0e5o1pr8697irtskf4jren3pc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBDc7pNmbZ755ZRn3Bg3z3qd1h2mrmWBIo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "781186178543-u04njdk0e5o1pr8697irtskf4jren3pc.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "781186178543-d8n18tsdf99nvsa3lt9fur14p3hkcjbo.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.pronouncemate"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
