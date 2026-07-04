@@ -26,9 +26,55 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
   String _selectedLevel = 'all';
   bool   _loading       = true;
   String? _error;
+  bool _offlineMode = false;
 
   List<dynamic> _builtin  = [];
   List<dynamic> _uploaded = [];
+
+  static const List<Map<String, dynamic>> _fallbackBuiltinScripts = [
+    {
+      'title': 'Club Introduction',
+      'description': 'A simple opener for introducing yourself to a small audience.',
+      'content': 'Hello everyone, my name is Maya, and I am excited to be here today. I enjoy helping people speak with more clarity and confidence. Over the next few minutes, I will share a little about my background, what I care about, and why I joined this club.',
+      'level': 'beginner',
+      'word_count': 48,
+    },
+    {
+      'title': 'Coffee Order',
+      'description': 'Practice everyday requests with natural rhythm and simple replies.',
+      'content': 'Hi, could I get a medium coffee, please? I would also like one extra shot of espresso and a little milk on the side. Thank you. That is everything for now, and I appreciate your help.',
+      'level': 'beginner',
+      'word_count': 40,
+    },
+    {
+      'title': 'Startup Pitch',
+      'description': 'Present a problem, solution, and closing line without extra filler.',
+      'content': 'Today, I want to introduce a simple idea that solves a very common problem. Many people lose time because their tasks are scattered across different apps and notes. Our solution brings everything into one place, making it easier to stay focused and move faster. That is why this product matters.',
+      'level': 'intermediate',
+      'word_count': 94,
+    },
+    {
+      'title': 'Weekend Plans',
+      'description': 'Keep the conversation moving with details, reactions, and follow-ups.',
+      'content': 'This weekend I am hoping to slow down a little and spend more time outside. If the weather is nice, I want to visit a park, meet a friend for lunch, and finish a few things I have been putting off. It should be a good balance of rest and getting things done.',
+      'level': 'intermediate',
+      'word_count': 76,
+    },
+    {
+      'title': 'Conference Opening',
+      'description': 'A polished opening for a talk with strong presence and audience control.',
+      'content': 'Good morning, and thank you for joining us. It is a privilege to open this conference and share a message that matters to all of us. In the next few minutes, I will outline where we are today, where we are headed, and what we need to do together to get there.',
+      'level': 'advanced',
+      'word_count': 136,
+    },
+    {
+      'title': 'Vision Statement',
+      'description': 'Deliver a persuasive message with a memorable hook and landing.',
+      'content': 'We are building more than a product. We are building a clearer path for people who want to speak with confidence and be understood the first time. That vision guides every decision we make, from the smallest detail to the biggest launch.',
+      'level': 'advanced',
+      'word_count': 148,
+    },
+  ];
 
   @override
   void initState() {
@@ -45,16 +91,49 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
   }
 
   Future<void> _loadScripts() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+      _offlineMode = false;
+    });
     try {
+      print(' Fetching scripts from backend...');
       final data = await ApiService.getScripts();
+      print(' Response received: $data');
+      
       setState(() {
         _builtin  = data['builtin']  ?? [];
         _uploaded = data['uploaded'] ?? [];
         _loading  = false;
       });
-    } catch (e) {
-      setState(() { _error = 'Failed to load scripts'; _loading = false; });
+      
+      print(' Built-in scripts count: ${_builtin.length}');
+      print(' Uploaded scripts count: ${_uploaded.length}');
+      
+    } catch (e, stackTrace) {
+      print(' ERROR loading scripts: $e');
+      print(' Stack trace: $stackTrace');
+      final isNetworkFailure = e is SocketException ||
+          e is HttpException ||
+          e.toString().contains('ClientException');
+
+      if (isNetworkFailure) {
+        setState(() {
+          _builtin = List<Map<String, dynamic>>.from(_fallbackBuiltinScripts);
+          _uploaded = const [];
+          _offlineMode = true;
+          _loading = false;
+        });
+        if (mounted) {
+          _showError('Backend unavailable. Showing built-in scripts only.');
+        }
+        return;
+      }
+
+      setState(() {
+        _error = 'Failed to load scripts: ${e.toString()}';
+        _loading = false;
+      });
     }
   }
 
@@ -290,11 +369,33 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
           : _error != null
               ? Center(child: Text(_error!,
                     style: const TextStyle(color: Colors.red)))
-              : TabBarView(
-                  controller: _tabs,
+              : Column(
                   children: [
-                    _builtinTab(),
-                    _uploadedTab(),
+                    if (_offlineMode)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        color: AppColors.primary.withOpacity(0.08),
+                        child: const Text(
+                          'Offline mode: built-in scripts are available, but your uploaded scripts need the backend.',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    Expanded(
+                      child: TabBarView(
+                        controller: _tabs,
+                        children: [
+                          _builtinTab(),
+                          _uploadedTab(),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
       floatingActionButton: widget.initialTabIndex == 1
