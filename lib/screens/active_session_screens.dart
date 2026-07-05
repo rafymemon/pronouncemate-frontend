@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../services/recording_service.dart';
 import '../services/api_service.dart';
+import '../services/user_progress_service.dart';
 
 enum WordStatus { pending, correct, error }
 enum SessionState { idle, recording, processing, done }
@@ -145,6 +146,8 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
           );
         }).toList();
       });
+
+      await UserProgressService.instance.invalidate();
 
     } catch (e) {
       setState(() {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/user_progress_service.dart';
 import '../services/user_session.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common_widgets.dart';
@@ -17,6 +18,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _selectedAccent = 'American English';
   String _proficiencyLevel = UserSession.instance.proficiencyLevel;
 
+  late Future<UserProgressSummary> _summaryFuture;
+
   final List<String> _accents = [
     'American English',
     'British English',
@@ -24,19 +27,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
   ];
   final List<String> _proficiencyLevels = ['Beginner', 'Intermediate', 'Advanced'];
 
+  @override
+  void initState() {
+    super.initState();
+    _summaryFuture = UserProgressService.load();
+    UserProgressService.instance.addListener(_onProgressChanged);
+  }
+
+  @override
+  void dispose() {
+    UserProgressService.instance.removeListener(_onProgressChanged);
+    super.dispose();
+  }
+
   void _confirmLogout() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text(
+          'Sign Out',
+          style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary),
         ),
-        title: const Text('Sign Out',
-            style: TextStyle(
-              
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-            )),
         content: const Text(
           'Are you sure you want to sign out of PronounceMate?',
           style: TextStyle(color: AppColors.textSecondary),
@@ -44,18 +56,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel',
-                style: TextStyle(color: AppColors.textSecondary)),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.of(ctx).pop();
-              UserSession.instance.signOut();
+              await UserSession.instance.signOut();
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
             child: const Text('Sign Out'),
           ),
@@ -64,254 +74,265 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  void _onProgressChanged() {
+    if (!mounted) return;
+    setState(() {
+      _summaryFuture = UserProgressService.load();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Profile & Settings')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Profile Card ──────────────────────────────────
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.primary, AppColors.accentLight],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withOpacity(0.4),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
+    return AnimatedBuilder(
+      animation: UserSession.instance,
+      builder: (context, _) {
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          appBar: AppBar(title: const Text('Profile & Settings')),
+          body: FutureBuilder<UserProgressSummary>(
+            future: _summaryFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+              }
+
+              final summary = snapshot.data;
+              if (summary == null) {
+                return const Center(
+                  child: Text(
+                    'Could not load your profile data.',
+                    style: TextStyle(color: AppColors.textSecondary),
                   ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  // Avatar
-                  Container(
-                    width: 68,
-                    height: 68,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                          color: Colors.white.withOpacity(0.5), width: 2),
-                    ),
-                    child: Center(
-                      child: Text(UserSession.instance.initials,
-                          style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          )),
-                    ),
-                  ),
-                  const SizedBox(width: 18),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                            UserSession.instance.name.isEmpty
-                              ? 'Your Username'
-                              : UserSession.instance.name,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            )),
-                        const SizedBox(height: 3),
-                        Text(
-                            'Username account',
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 13,
-                            )),
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text('$_proficiencyLevel Level',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              )),
+                );
+              }
+
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [AppColors.primary, AppColors.accentLight],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primary.withOpacity(0.4),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 68,
+                            height: 68,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white.withOpacity(0.5), width: 2),
+                            ),
+                            child: Center(
+                              child: Text(
+                                UserSession.instance.initials,
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 18),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  summary.displayName,
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                const Text(
+                                  'Username account',
+                                  style: TextStyle(color: Colors.white70, fontSize: 13),
+                                ),
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    '$_proficiencyLevel Level',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined, color: Colors.white70, size: 22),
+                            onPressed: _showEditProfileDialog,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    Row(
+                      children: [
+                        _miniStat('${summary.totalSessions}', 'Sessions'),
+                        _divider(),
+                        _miniStat('${summary.averageAccuracy.toStringAsFixed(0)}%', 'Avg Score'),
+                        _divider(),
+                        _miniStat('${summary.streakDays} days', 'Streak'),
+                        _divider(),
+                        _miniStat('${summary.wordsPracticed ?? 0}', 'Words'),
                       ],
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.edit_outlined,
-                        color: Colors.white70, size: 22),
-                    onPressed: () => _showEditProfileDialog(),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 22),
-
-            // ── Stats Summary ─────────────────────────────────
-            Row(
-              children: [
-                _miniStat('24', 'Sessions'),
-                _divider(),
-                _miniStat('78%', 'Avg Score'),
-                _divider(),
-                _miniStat('5 days', 'Streak'),
-                _divider(),
-                _miniStat('340', 'Words'),
-              ],
-            ),
-            const SizedBox(height: 26),
-
-            // ── Practice Settings ─────────────────────────────
-            _sectionLabel('Practice Settings'),
-            const SizedBox(height: 10),
-            _settingsTile(
-              icon: Icons.signal_cellular_alt_rounded,
-              title: 'Proficiency Level',
-              subtitle: 'Your current English skill level',
-              trailing: DropdownButton<String>(
-                value: _proficiencyLevel,
-                underline: const SizedBox(),
-                style: const TextStyle(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
+                    const SizedBox(height: 26),
+                    _sectionLabel('Practice Settings'),
+                    const SizedBox(height: 10),
+                    _settingsTile(
+                      icon: Icons.signal_cellular_alt_rounded,
+                      title: 'Proficiency Level',
+                      subtitle: 'Your current English skill level',
+                      trailing: DropdownButton<String>(
+                        value: _proficiencyLevel,
+                        underline: const SizedBox(),
+                        style: const TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                        items: _proficiencyLevels
+                            .map((level) => DropdownMenuItem(value: level, child: Text(level)))
+                            .toList(),
+                        onChanged: (val) async {
+                          if (val == null) return;
+                          setState(() => _proficiencyLevel = val);
+                          await UserSession.instance.setProficiencyLevel(val);
+                        },
+                      ),
+                    ),
+                    _settingsTile(
+                      icon: Icons.language_rounded,
+                      title: 'Reference Accent',
+                      subtitle: _selectedAccent,
+                      trailing: DropdownButton<String>(
+                        value: _selectedAccent,
+                        underline: const SizedBox(),
+                        style: const TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                        items: _accents
+                            .map((accent) => DropdownMenuItem(value: accent, child: Text(accent)))
+                            .toList(),
+                        onChanged: (val) => setState(() => _selectedAccent = val ?? _selectedAccent),
+                      ),
+                    ),
+                    _switchTile(
+                      icon: Icons.volume_up_rounded,
+                      title: 'Voice Feedback',
+                      subtitle: 'Play audio corrections after errors',
+                      value: _soundFeedback,
+                      onChanged: (value) => setState(() => _soundFeedback = value),
+                    ),
+                    _switchTile(
+                      icon: Icons.save_alt_rounded,
+                      title: 'Auto-Save Recordings',
+                      subtitle: 'Store session audio for review',
+                      value: _autoSaveRecordings,
+                      onChanged: (value) => setState(() => _autoSaveRecordings = value),
+                    ),
+                    const SizedBox(height: 20),
+                    _sectionLabel('App Settings'),
+                    const SizedBox(height: 10),
+                    _switchTile(
+                      icon: Icons.notifications_outlined,
+                      title: 'Daily Reminders',
+                      subtitle: 'Get reminded to practice every day',
+                      value: _notificationsOn,
+                      onChanged: (value) => setState(() => _notificationsOn = value),
+                    ),
+                    _actionTile(
+                      icon: Icons.lock_outline,
+                      title: 'Change Password',
+                      onTap: () {},
+                    ),
+                    _actionTile(
+                      icon: Icons.privacy_tip_outlined,
+                      title: 'Privacy Policy',
+                      onTap: () {},
+                    ),
+                    _actionTile(
+                      icon: Icons.info_outline_rounded,
+                      title: 'About PronounceMate',
+                      onTap: _showAboutDialog,
+                    ),
+                    const SizedBox(height: 20),
+                    _sectionLabel('Data Management'),
+                    const SizedBox(height: 10),
+                    _actionTile(
+                      icon: Icons.download_rounded,
+                      title: 'Export My Progress Report',
+                      onTap: () {},
+                    ),
+                    _actionTile(
+                      icon: Icons.delete_outline_rounded,
+                      title: 'Clear Session History',
+                      iconColor: AppColors.error,
+                      textColor: AppColors.error,
+                      onTap: () {},
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 54,
+                      child: ElevatedButton.icon(
+                        onPressed: _confirmLogout,
+                        icon: const Icon(Icons.logout_rounded, size: 20),
+                        label: const Text('Sign Out'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.error,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Center(
+                      child: Text(
+                        'PronounceMate v1.0.0 — FYP 2025',
+                        style: TextStyle(fontSize: 12, color: AppColors.textHint),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
                 ),
-                items: _proficiencyLevels
-                    .map((l) => DropdownMenuItem(value: l, child: Text(l)))
-                    .toList(),
-                onChanged: (val) {
-                  if (val == null) return;
-                  setState(() => _proficiencyLevel = val);
-                  UserSession.instance.proficiencyLevel = val;
-                },
-              ),
-            ),
-            _settingsTile(
-              icon: Icons.language_rounded,
-              title: 'Reference Accent',
-              subtitle: _selectedAccent,
-              trailing: DropdownButton<String>(
-                value: _selectedAccent,
-                underline: const SizedBox(),
-                style: const TextStyle(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
-                items: _accents
-                    .map((a) =>
-                        DropdownMenuItem(value: a, child: Text(a)))
-                    .toList(),
-                onChanged: (val) =>
-                    setState(() => _selectedAccent = val!),
-              ),
-            ),
-            _switchTile(
-              icon: Icons.volume_up_rounded,
-              title: 'Voice Feedback',
-              subtitle: 'Play audio corrections after errors',
-              value: _soundFeedback,
-              onChanged: (v) => setState(() => _soundFeedback = v),
-            ),
-            _switchTile(
-              icon: Icons.save_alt_rounded,
-              title: 'Auto-Save Recordings',
-              subtitle: 'Store session audio for review',
-              value: _autoSaveRecordings,
-              onChanged: (v) => setState(() => _autoSaveRecordings = v),
-            ),
-            const SizedBox(height: 20),
-
-            // ── App Settings ──────────────────────────────────
-            _sectionLabel('App Settings'),
-            const SizedBox(height: 10),
-            _switchTile(
-              icon: Icons.notifications_outlined,
-              title: 'Daily Reminders',
-              subtitle: 'Get reminded to practice every day',
-              value: _notificationsOn,
-              onChanged: (v) => setState(() => _notificationsOn = v),
-            ),
-            _actionTile(
-              icon: Icons.lock_outline,
-              title: 'Change Password',
-              onTap: () {},
-            ),
-            _actionTile(
-              icon: Icons.privacy_tip_outlined,
-              title: 'Privacy Policy',
-              onTap: () {},
-            ),
-            _actionTile(
-              icon: Icons.info_outline_rounded,
-              title: 'About PronounceMate',
-              onTap: () => _showAboutDialog(),
-            ),
-            const SizedBox(height: 20),
-
-            // ── Data Management ───────────────────────────────
-            _sectionLabel('Data Management'),
-            const SizedBox(height: 10),
-            _actionTile(
-              icon: Icons.download_rounded,
-              title: 'Export My Progress Report',
-              onTap: () {},
-            ),
-            _actionTile(
-              icon: Icons.delete_outline_rounded,
-              title: 'Clear Session History',
-              iconColor: AppColors.error,
-              textColor: AppColors.error,
-              onTap: () {},
-            ),
-            const SizedBox(height: 24),
-
-            // ── Logout Button ─────────────────────────────────
-            SizedBox(
-              width: double.infinity,
-              height: 54,
-              child: ElevatedButton.icon(
-                onPressed: _confirmLogout,
-                icon: const Icon(Icons.logout_rounded, size: 20),
-                label: const Text('Sign Out'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.error,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  textStyle: const TextStyle(
-                    
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Center(
-              child: Text('PronounceMate v1.0.0 — FYP 2025',
-                  style: TextStyle(
-                      fontSize: 12, color: AppColors.textHint)),
-            ),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
@@ -323,28 +344,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(12),
           boxShadow: const [
-            BoxShadow(
-                color: AppColors.cardShadow,
-                blurRadius: 6,
-                offset: Offset(0, 2))
+            BoxShadow(color: AppColors.cardShadow, blurRadius: 6, offset: Offset(0, 2)),
           ],
         ),
         child: Column(
           children: [
-            Text(value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
-                )),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: AppColors.primary,
+              ),
+            ),
             const SizedBox(height: 2),
-            Text(label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    fontSize: 11, color: AppColors.textSecondary)),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+            ),
           ],
         ),
       ),
@@ -356,13 +377,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _sectionLabel(String label) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 2, left: 2),
-      child: Text(label,
-          style: const TextStyle(
-            
-            fontSize: 15,
-            fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
-          )),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.bold,
+          color: AppColors.textPrimary,
+        ),
+      ),
     );
   }
 
@@ -379,10 +401,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(13),
         boxShadow: const [
-          BoxShadow(
-              color: AppColors.cardShadow,
-              blurRadius: 6,
-              offset: Offset(0, 2))
+          BoxShadow(color: AppColors.cardShadow, blurRadius: 6, offset: Offset(0, 2)),
         ],
       ),
       child: Row(
@@ -401,15 +420,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      color: AppColors.textPrimary,
-                    )),
-                Text(subtitle,
-                    style: const TextStyle(
-                        fontSize: 12, color: AppColors.textSecondary)),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                ),
               ],
             ),
           ),
@@ -433,10 +455,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(13),
         boxShadow: const [
-          BoxShadow(
-              color: AppColors.cardShadow,
-              blurRadius: 6,
-              offset: Offset(0, 2))
+          BoxShadow(color: AppColors.cardShadow, blurRadius: 6, offset: Offset(0, 2)),
         ],
       ),
       child: Row(
@@ -455,15 +474,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                      color: AppColors.textPrimary,
-                    )),
-                Text(subtitle,
-                    style: const TextStyle(
-                        fontSize: 12, color: AppColors.textSecondary)),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                ),
               ],
             ),
           ),
@@ -493,10 +515,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(13),
           boxShadow: const [
-            BoxShadow(
-                color: AppColors.cardShadow,
-                blurRadius: 6,
-                offset: Offset(0, 2))
+            BoxShadow(color: AppColors.cardShadow, blurRadius: 6, offset: Offset(0, 2)),
           ],
         ),
         child: Row(
@@ -512,15 +531,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(width: 14),
             Expanded(
-              child: Text(title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    color: textColor,
-                  )),
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  color: textColor,
+                ),
+              ),
             ),
-            const Icon(Icons.arrow_forward_ios_rounded,
-                color: AppColors.textHint, size: 15),
+            const Icon(Icons.arrow_forward_ios_rounded, color: AppColors.textHint, size: 15),
           ],
         ),
       ),
@@ -559,12 +579,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            const Text('Edit Profile',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                )),
+            const Text(
+              'Edit Profile',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+            ),
             const SizedBox(height: 20),
             AppTextField(
               label: 'Username',
@@ -579,6 +597,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 final newName = nameCtrl.text.trim();
                 if (newName.isNotEmpty) {
                   await UserSession.instance.setUsername(newName);
+                  _summaryFuture = UserProgressService.load();
                 }
                 if (!ctx.mounted) return;
                 Navigator.of(ctx).pop();
@@ -588,17 +607,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
       ),
-    ).whenComplete(() {
-      nameCtrl.dispose();
-    });
+    ).whenComplete(nameCtrl.dispose);
   }
 
   void _showAboutDialog() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         content: const Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -607,17 +623,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Text(
               'An AI-powered English pronunciation detection and improvement system. Built as a Final Year Project at Mehran University.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textSecondary,
-                  height: 1.5),
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.5),
             ),
             SizedBox(height: 8),
-            Text('Batch 22SW • Group 04',
-                style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textHint,
-                    fontStyle: FontStyle.italic)),
+            Text(
+              'Batch 22SW • Group 04',
+              style: TextStyle(fontSize: 12, color: AppColors.textHint, fontStyle: FontStyle.italic),
+            ),
           ],
         ),
         actions: [

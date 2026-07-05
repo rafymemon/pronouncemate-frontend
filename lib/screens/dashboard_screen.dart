@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import '../services/user_progress_service.dart';
+import '../services/user_session.dart';
 import '../theme/app_theme.dart';
-// TODO: Make sure to import your ApiService here
-import '../services/api_service.dart'; 
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -11,240 +11,170 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  List<dynamic> _sessions = [];
-  Map<String, dynamic>? _profile;
-  bool _isLoading = true;
+  late Future<UserProgressSummary> _summaryFuture;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _summaryFuture = UserProgressService.load();
+    UserProgressService.instance.addListener(_onProgressChanged);
   }
 
-  Future<void> _loadData() async {
-    try {
-      final sessions = await ApiService.getSessions();
-      final profile = await ApiService.getProfile();
-      
-      setState(() {
-        _sessions = sessions;
-        _profile = profile;
-        _isLoading = false;
-      });
-    } catch (e) {
-      // Handle any API errors gracefully
-      setState(() {
-        _isLoading = false;
-      });
-      debugPrint("Error loading dashboard data: $e");
-    }
+  @override
+  void dispose() {
+    UserProgressService.instance.removeListener(_onProgressChanged);
+    super.dispose();
+  }
+
+  Future<void> _reload() async {
+    setState(() {
+      _summaryFuture = UserProgressService.load();
+    });
+    await _summaryFuture;
+  }
+
+  void _onProgressChanged() {
+    if (!mounted) return;
+    _reload();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Dashboard'),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.accent))
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 16),
-                  
-                  // --- STATS OVERVIEW CARD ---
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 24),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [AppColors.accent, AppColors.accentLight],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(28),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.accent.withOpacity(0.35),
-                          blurRadius: 24,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
+    return AnimatedBuilder(
+      animation: UserSession.instance,
+      builder: (context, _) {
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          appBar: AppBar(
+            title: const Text('Dashboard'),
+            actions: [
+              IconButton(onPressed: _reload, icon: const Icon(Icons.refresh_rounded)),
+            ],
+          ),
+          body: FutureBuilder<UserProgressSummary>(
+            future: _summaryFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator(color: AppColors.accent));
+              }
+              if (snapshot.hasError) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text(
+                      'Could not load dashboard data right now.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: AppColors.textSecondary),
                     ),
-                    child: Column(
-                      children: [
-                        const Icon(Icons.bar_chart_rounded, color: Colors.white, size: 44),
-                        const SizedBox(height: 24),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  ),
+                );
+              }
+
+              final summary = snapshot.data;
+              if (summary == null) return const SizedBox.shrink();
+
+              return RefreshIndicator(
+                onRefresh: _reload,
+                color: AppColors.accent,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 16),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 24),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [AppColors.accent, AppColors.accentLight],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(28),
+                          boxShadow: [
+                            BoxShadow(color: AppColors.accent.withOpacity(0.35), blurRadius: 24, offset: const Offset(0, 10)),
+                          ],
+                        ),
+                        child: Column(
                           children: [
-                            // Total Sessions Stat
-                            Column(
+                            const Icon(Icons.bar_chart_rounded, color: Colors.white, size: 44),
+                            const SizedBox(height: 24),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                               children: [
-                                const Text(
-                                  'Total Sessions',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                                Column(
+                                  children: [
+                                    const Text('Total Sessions', style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500)),
+                                    const SizedBox(height: 8),
+                                    Text('${summary.totalSessions}', style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+                                  ],
                                 ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  "${_profile?['total_sessions'] ?? 0}",
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            
-                            // Vertical Divider
-                            Container(
-                              height: 50,
-                              width: 1,
-                              color: Colors.white.withOpacity(0.3),
-                            ),
-                            
-                            // Best Score Stat
-                            Column(
-                              children: [
-                                const Text(
-                                  'Best Score',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  "${_profile?['best_score']?.toStringAsFixed(1) ?? '0.0'}%",
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                Container(height: 50, width: 1, color: Colors.white.withOpacity(0.3)),
+                                Column(
+                                  children: [
+                                    const Text('Best Score', style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500)),
+                                    const SizedBox(height: 8),
+                                    Text('${summary.bestScore.toStringAsFixed(1)}%', style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+                                  ],
                                 ),
                               ],
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 32),
-                  
-                  // --- RECENT SESSIONS TITLE ---
-                  const Text(
-                    'Recent Sessions',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 16),
-                  
-                  // --- SESSIONS LIST ---
-                  if (_sessions.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      alignment: Alignment.center,
-                      child: const Text(
-                        "No sessions recorded yet. Start practicing!",
-                        style: TextStyle(color: AppColors.textSecondary),
                       ),
-                    )
-                  else
-                    ListView.builder(
-                      shrinkWrap: true, // Required because it's inside a SingleChildScrollView
-                      physics: const NeverScrollableScrollPhysics(), // Disables inner scrolling
-                      itemCount: _sessions.length,
-                      itemBuilder: (ctx, i) {
-                        final s = _sessions[i];
-                        
-                        // Safely parse the date
-                        String dateString = "Unknown Date";
-                        if (s['created_at'] != null) {
-                           dateString = s['created_at'].toString();
-                           if (dateString.length >= 10) {
-                             dateString = dateString.substring(0, 10);
-                           }
-                        }
-
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          decoration: BoxDecoration(
-                            color: AppColors.surface,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: AppColors.divider),
-                            boxShadow: const [
-                              BoxShadow(color: AppColors.cardShadow, blurRadius: 6, offset: Offset(0, 2)),
-                            ],
-                          ),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            leading: Container(
-                              padding: const EdgeInsets.all(10),
+                      const SizedBox(height: 32),
+                      const Text('Recent Sessions', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                      const SizedBox(height: 16),
+                      if (summary.recentSessions.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          alignment: Alignment.center,
+                          child: const Text('No sessions recorded yet. Start practicing!', style: TextStyle(color: AppColors.textSecondary)),
+                        )
+                      else
+                        ...summary.recentSessions.map((session) => Container(
+                              margin: const EdgeInsets.only(bottom: 12),
                               decoration: BoxDecoration(
-                                color: AppColors.primary.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(10),
+                                color: AppColors.surface,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: AppColors.divider),
+                                boxShadow: const [
+                                  BoxShadow(color: AppColors.cardShadow, blurRadius: 6, offset: Offset(0, 2)),
+                                ],
                               ),
-                              child: const Icon(Icons.history_rounded, color: AppColors.primary),
-                            ),
-                            title: Text(
-                              "Session ${i + 1}",
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                            subtitle: Text(
-                              dateString,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                            trailing: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(
-                                  "${s['accuracy']}%",
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    color: AppColors.accent,
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                leading: Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(10),
                                   ),
+                                  child: const Icon(Icons.history_rounded, color: AppColors.primary),
                                 ),
-                                Text(
-                                  "${s['grade']}",
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 12,
-                                    color: AppColors.textSecondary,
-                                  ),
+                                title: Text(session.title, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                                subtitle: Text(session.dateLabel, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                                trailing: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text('${session.score.toStringAsFixed(0)}%', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.accent)),
+                                    Text(session.grade, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: AppColors.textSecondary)),
+                                  ],
                                 ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ),
+                              ),
+                            )),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }

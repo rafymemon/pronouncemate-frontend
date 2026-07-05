@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/user_session.dart';
+import '../services/user_progress_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common_widgets.dart';
 import 'dashboard_screen.dart';
@@ -10,11 +11,73 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class HomeScreenState extends State<HomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  late UserProgressSummary _summary;
+  bool _isLoadingSummary = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _summary = UserProgressService.cachedSummary ?? _emptySummary();
+    _isLoadingSummary = UserProgressService.cachedSummary == null;
+    UserProgressService.instance.addListener(_onProgressChanged);
+    _loadSummary();
+  }
+
+  @override
+  void dispose() {
+    UserProgressService.instance.removeListener(_onProgressChanged);
+    super.dispose();
+  }
+
+  UserProgressSummary _emptySummary() {
+    return UserProgressSummary(
+      displayName: UserSession.instance.name,
+      totalSessions: 0,
+      bestScore: 0,
+      averageAccuracy: 0,
+      streakDays: 0,
+      wordsPracticed: 0,
+      todaySessions: 0,
+      goalTarget: 2,
+      recentSessions: const [],
+    );
+  }
+
+  Future<void> _loadSummary() async {
+    if (mounted) {
+      setState(() {
+        _isLoadingSummary = true;
+      });
+    }
+
+    final summary = await UserProgressService.load();
+    if (!mounted) return;
+
+    setState(() {
+      _summary = summary;
+      _isLoadingSummary = false;
+    });
+
+    UserProgressService.cache(summary);
+  }
+
+  Future<void> reload() async {
+    await _loadSummary();
+  }
+
+  Future<void> _refresh() async {
+    await reload();
+  }
+
+  void _onProgressChanged() {
+    if (!mounted) return;
+    reload();
+  }
 
   void _confirmLogout() {
     showDialog(
@@ -22,13 +85,16 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: const Text('Sign Out',
-            style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-        content: const Text('Are you sure you want to sign out of PronounceMate?',
+            style: TextStyle(
+                fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+        content: const Text(
+            'Are you sure you want to sign out of PronounceMate?',
             style: TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+            child: const Text('Cancel',
+                style: TextStyle(color: AppColors.textSecondary)),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -42,7 +108,8 @@ class _HomeScreenState extends State<HomeScreen> {
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
             child: const Text('Sign Out'),
           ),
@@ -53,213 +120,247 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      key: _scaffoldKey,
-      backgroundColor: AppColors.background,
-      drawer: _AppDrawer(onLogout: _confirmLogout),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Greeting Header ──────────────────────────────
-              Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => _scaffoldKey.currentState?.openDrawer(),
-                    child: Container(
-                      width: 44,
-                      height: 44,
+    final summary = _summary;
+
+    return AnimatedBuilder(
+      animation: UserSession.instance,
+      builder: (context, _) {
+        return Scaffold(
+          key: _scaffoldKey,
+          backgroundColor: AppColors.background,
+          drawer: _AppDrawer(onLogout: _confirmLogout),
+          body: SafeArea(
+            child: RefreshIndicator(
+              onRefresh: _refresh,
+              color: AppColors.primary,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── Greeting Header ──────────────────────────────
+                    Row(
+                      children: [
+                        GestureDetector(
+                          onTap: () => _scaffoldKey.currentState?.openDrawer(),
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: AppColors.surface,
+                              borderRadius: BorderRadius.circular(13),
+                              boxShadow: const [
+                                BoxShadow(
+                                    color: AppColors.cardShadow,
+                                    blurRadius: 8,
+                                    offset: Offset(0, 2)),
+                              ],
+                            ),
+                            child: const Icon(Icons.menu_rounded,
+                                color: AppColors.textPrimary, size: 22),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                () {
+                                  final h = DateTime.now().hour;
+                                  return h < 12
+                                      ? 'Good morning,'
+                                      : h < 17
+                                          ? 'Good afternoon,'
+                                          : 'Good evening,';
+                                }(),
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    color: AppColors.textSecondary),
+                              ),
+                              Text('${summary.displayName} 👋',
+                                  style: const TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.textPrimary,
+                                  )),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius: BorderRadius.circular(13),
+                            boxShadow: const [
+                              BoxShadow(
+                                  color: AppColors.cardShadow,
+                                  blurRadius: 8,
+                                  offset: Offset(0, 2))
+                            ],
+                          ),
+                          child: const Icon(Icons.notifications_outlined,
+                              color: AppColors.textPrimary, size: 22),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    if (_isLoadingSummary)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 16),
+                        child: LinearProgressIndicator(minHeight: 2),
+                      ),
+
+                    // ── AI Speaker Hero ───────────────────────────────
+                    const _SpeakerHero(),
+                    const SizedBox(height: 24),
+
+                    // ── Today's Goal Banner ──────────────────────────
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(13),
-                        boxShadow: const [
-                          BoxShadow(color: AppColors.cardShadow, blurRadius: 8, offset: Offset(0, 2))
+                        gradient: const LinearGradient(
+                          colors: [AppColors.primary, AppColors.primaryLight],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primary.withValues(alpha: 0.35),
+                            blurRadius: 16,
+                            offset: const Offset(0, 7),
+                          ),
                         ],
                       ),
-                      child: const Icon(Icons.menu_rounded, color: AppColors.textPrimary, size: 22),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          () {
-                            final h = DateTime.now().hour;
-                            return h < 12
-                                ? 'Good morning,'
-                                : h < 17
-                                    ? 'Good afternoon,'
-                                    : 'Good evening,';
-                          }(),
-                          style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                        ),
-                        Text('${UserSession.instance.firstName} 👋',
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textPrimary,
-                            )),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(13),
-                      boxShadow: const [
-                        BoxShadow(color: AppColors.cardShadow, blurRadius: 8, offset: Offset(0, 2))
-                      ],
-                    ),
-                    child: const Icon(Icons.notifications_outlined,
-                        color: AppColors.textPrimary, size: 22),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // ── AI Speaker Hero ───────────────────────────────
-              const _SpeakerHero(),
-              const SizedBox(height: 24),
-
-              // ── Today's Goal Banner ──────────────────────────
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [AppColors.primary, AppColors.primaryLight],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.35),
-                      blurRadius: 16,
-                      offset: const Offset(0, 7),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
                         children: [
-                          const Text("Today's Goal",
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 13,
-                              )),
-                          const SizedBox(height: 4),
-                          const Text('Complete 2 Practice Sessions',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              )),
-                          const SizedBox(height: 14),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(6),
-                            child: const LinearProgressIndicator(
-                              value: 0.5,
-                              backgroundColor: Colors.white24,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white),
-                              minHeight: 7,
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text("Today's Goal",
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 13,
+                                    )),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Complete ${summary.goalTarget} Practice Sessions',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: LinearProgressIndicator(
+                                    value: summary.goalProgress.clamp(0.0, 1.0),
+                                    backgroundColor: Colors.white24,
+                                    valueColor:
+                                        const AlwaysStoppedAnimation<Color>(
+                                            Colors.white),
+                                    minHeight: 7,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  '${summary.todaySessions} of ${summary.goalTarget} completed',
+                                  style: const TextStyle(
+                                      color: Colors.white70, fontSize: 12),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 6),
-                          const Text('1 of 2 completed',
-                              style: TextStyle(
-                                  color: Colors.white70, fontSize: 12)),
+                          const SizedBox(width: 16),
+                          const Icon(Icons.flag_rounded,
+                              color: Colors.white54, size: 48),
                         ],
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    const Icon(Icons.flag_rounded,
-                        color: Colors.white54, size: 48),
+                    const SizedBox(height: 28),
+
+                    // ── Quick Stats ──────────────────────────────────
+                    const SectionHeader(
+                      title: 'Your Progress',
+                      subtitle: 'From your recent activity',
+                    ),
+                    const SizedBox(height: 14),
+                    GridView.count(
+                      crossAxisCount: 2,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisSpacing: 14,
+                      mainAxisSpacing: 14,
+                      childAspectRatio: 1.1,
+                      children: [
+                        StatCard(
+                          label: 'Sessions Done',
+                          value: summary.totalSessions.toString(),
+                          icon: Icons.mic_rounded,
+                          color: AppColors.primary,
+                        ),
+                        StatCard(
+                          label: 'Avg. Accuracy',
+                          value:
+                              '${summary.averageAccuracy.toStringAsFixed(0)}%',
+                          icon: Icons.track_changes_rounded,
+                          color: AppColors.success,
+                        ),
+                        StatCard(
+                          label: 'Words Practiced',
+                          value: summary.wordsPracticed == null
+                              ? '—'
+                              : summary.wordsPracticed.toString(),
+                          icon: Icons.spellcheck_rounded,
+                          color: AppColors.warning,
+                        ),
+                        StatCard(
+                          label: 'Streak',
+                          value: '${summary.streakDays} days',
+                          icon: Icons.local_fire_department_rounded,
+                          color: AppColors.error,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 28),
+
+                    // ── Recent Sessions ──────────────────────────────
+                    const SectionHeader(title: 'Recent Sessions'),
+                    const SizedBox(height: 14),
+                    if (summary.recentSessions.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Text(
+                          'No sessions yet. Start a practice run to see your history here.',
+                          style: TextStyle(color: AppColors.textSecondary),
+                        ),
+                      )
+                    else
+                      ...summary.recentSessions.map(
+                        (session) => _RecentSession(
+                          title: session.title,
+                          date: session.dateLabel,
+                          score: session.score.round(),
+                          duration: session.durationLabel ?? '—',
+                          grade: session.grade,
+                        ),
+                      ),
+                    const SizedBox(height: 20),
                   ],
                 ),
               ),
-              const SizedBox(height: 28),
-
-              // ── Quick Stats ──────────────────────────────────
-              const SectionHeader(
-                title: 'Your Progress',
-                subtitle: 'Last 7 days',
-              ),
-              const SizedBox(height: 14),
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisSpacing: 14,
-                mainAxisSpacing: 14,
-                childAspectRatio: 1.1,
-                children: const [
-                  StatCard(
-                    label: 'Sessions Done',
-                    value: '12',
-                    icon: Icons.mic_rounded,
-                    color: AppColors.primary,
-                  ),
-                  StatCard(
-                    label: 'Avg. Accuracy',
-                    value: '78%',
-                    icon: Icons.track_changes_rounded,
-                    color: AppColors.success,
-                  ),
-                  StatCard(
-                    label: 'Words Practiced',
-                    value: '340',
-                    icon: Icons.spellcheck_rounded,
-                    color: AppColors.warning,
-                  ),
-                  StatCard(
-                    label: 'Streak',
-                    value: '5 days',
-                    icon: Icons.local_fire_department_rounded,
-                    color: AppColors.error,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 28),
-
-              // ── Recent Sessions ──────────────────────────────
-              const SectionHeader(title: 'Recent Sessions'),
-              const SizedBox(height: 14),
-              ...[
-                const _RecentSession(
-                  title: 'Daily Conversation',
-                  date: 'Today, 10:30 AM',
-                  score: 82,
-                  duration: '8 min',
-                ),
-                const _RecentSession(
-                  title: 'Public Speaking',
-                  date: 'Yesterday, 3:15 PM',
-                  score: 74,
-                  duration: '12 min',
-                ),
-                const _RecentSession(
-                  title: 'Script-Based',
-                  date: 'Mon, 9:00 AM',
-                  score: 91,
-                  duration: '6 min',
-                ),
-              ],
-              const SizedBox(height: 20),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -317,7 +418,8 @@ class _AppDrawer extends StatelessWidget {
                       )),
                   const SizedBox(height: 2),
                   Text('Username account',
-                      style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 13)),
                 ],
               ),
             ),
@@ -328,8 +430,8 @@ class _AppDrawer extends StatelessWidget {
               label: 'Dashboard',
               onTap: () {
                 Navigator.of(context).pop();
-                Navigator.of(context)
-                    .push(MaterialPageRoute(builder: (_) => const DashboardScreen()));
+                Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const DashboardScreen()));
               },
             ),
             _DrawerItem(
@@ -337,8 +439,8 @@ class _AppDrawer extends StatelessWidget {
               label: 'Edit Profile',
               onTap: () {
                 Navigator.of(context).pop();
-                Navigator.of(context)
-                    .push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
+                Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ProfileScreen()));
               },
             ),
             _DrawerItem(
@@ -364,7 +466,8 @@ class _AppDrawer extends StatelessWidget {
                   onLogout();
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
                   decoration: BoxDecoration(
                     color: AppColors.errorLight,
                     borderRadius: BorderRadius.circular(14),
@@ -372,7 +475,8 @@ class _AppDrawer extends StatelessWidget {
                   ),
                   child: const Row(
                     children: [
-                      Icon(Icons.logout_rounded, color: AppColors.error, size: 20),
+                      Icon(Icons.logout_rounded,
+                          color: AppColors.error, size: 20),
                       SizedBox(width: 14),
                       Text('Sign Out',
                           style: TextStyle(
@@ -397,7 +501,8 @@ class _DrawerItem extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-  const _DrawerItem({required this.icon, required this.label, required this.onTap});
+  const _DrawerItem(
+      {required this.icon, required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -452,7 +557,8 @@ class _SpeakerHero extends StatelessWidget {
                   height: 190,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withOpacity(0.08), width: 2),
+                    border: Border.all(
+                        color: Colors.white.withOpacity(0.08), width: 2),
                   ),
                 ),
               ),
@@ -464,7 +570,8 @@ class _SpeakerHero extends StatelessWidget {
                   height: 125,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withOpacity(0.1), width: 2),
+                    border: Border.all(
+                        color: Colors.white.withOpacity(0.1), width: 2),
                   ),
                 ),
               ),
@@ -488,7 +595,8 @@ class _SpeakerHero extends StatelessWidget {
                   height: 110,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withOpacity(0.07), width: 2),
+                    border: Border.all(
+                        color: Colors.white.withOpacity(0.07), width: 2),
                   ),
                 ),
               ),
@@ -538,7 +646,8 @@ class _SpeakerIllustration extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
             ),
-            const Icon(Icons.record_voice_over_rounded, color: Colors.white, size: 34),
+            const Icon(Icons.record_voice_over_rounded,
+                color: Colors.white, size: 34),
           ],
         ),
         const SizedBox(height: 10),
@@ -635,12 +744,14 @@ class _RecentSession extends StatelessWidget {
   final String date;
   final int score;
   final String duration;
+  final String grade;
 
   const _RecentSession({
     required this.title,
     required this.date,
     required this.score,
     required this.duration,
+    required this.grade,
   });
 
   Color get _scoreColor {
@@ -658,7 +769,8 @@ class _RecentSession extends StatelessWidget {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
         boxShadow: const [
-          BoxShadow(color: AppColors.cardShadow, blurRadius: 8, offset: Offset(0, 3)),
+          BoxShadow(
+              color: AppColors.cardShadow, blurRadius: 8, offset: Offset(0, 3)),
         ],
       ),
       child: Row(
@@ -695,6 +807,13 @@ class _RecentSession extends StatelessWidget {
                       fontSize: 12,
                       color: AppColors.textSecondary,
                     )),
+                const SizedBox(height: 2),
+                Text('Grade $grade',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textHint,
+                      fontWeight: FontWeight.w600,
+                    )),
               ],
             ),
           ),
@@ -702,7 +821,6 @@ class _RecentSession extends StatelessWidget {
               style: const TextStyle(fontSize: 12, color: AppColors.textHint)),
         ],
       ),
-      
     );
   }
 }

@@ -14,18 +14,17 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
-
-  final List<Widget> _screens = const [
-    HomeScreen(),
-    _PracticeTab(),
-  ];
+  final GlobalKey<HomeScreenState> _homeKey = GlobalKey<HomeScreenState>();
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: [
+          HomeScreen(key: _homeKey),
+          const _PracticeTab(),
+        ],
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
@@ -39,7 +38,10 @@ class _MainShellState extends State<MainShell> {
         ),
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
-          onTap: (i) => setState(() => _currentIndex = i),
+          onTap: (i) {
+            if (i == _currentIndex) return;
+            setState(() => _currentIndex = i);
+          },
           items: const [
             BottomNavigationBarItem(
               icon: Icon(Icons.home_outlined),
@@ -133,13 +135,15 @@ class _PracticeTabState extends State<_PracticeTab> {
 
   IconData _modeIcon(String? mode) {
     if (mode == null) return Icons.category_outlined;
-    final m = _modes.firstWhere((e) => e['name'] == mode, orElse: () => _modes[0]);
+    final m =
+        _modes.firstWhere((e) => e['name'] == mode, orElse: () => _modes[0]);
     return m['icon'] as IconData;
   }
 
   String _modeDesc(String? mode) {
     if (mode == null) return 'Tap to choose your practice mode';
-    final m = _modes.firstWhere((e) => e['name'] == mode, orElse: () => _modes[0]);
+    final m =
+        _modes.firstWhere((e) => e['name'] == mode, orElse: () => _modes[0]);
     return m['desc'] as String;
   }
 
@@ -150,7 +154,8 @@ class _PracticeTabState extends State<_PracticeTab> {
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
           backgroundColor: AppColors.surface,
           title: const Text(
             'Choose Script Source',
@@ -173,13 +178,15 @@ class _PracticeTabState extends State<_PracticeTab> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF1A3A6B),
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
               onPressed: () {
                 Navigator.of(ctx).pop();
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => const ScriptSelectionScreen(initialTabIndex: 0),
+                    builder: (_) =>
+                        const ScriptSelectionScreen(initialTabIndex: 0),
                   ),
                 );
               },
@@ -189,7 +196,8 @@ class _PracticeTabState extends State<_PracticeTab> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.success,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
               onPressed: () {
                 Navigator.of(ctx).pop();
@@ -332,14 +340,19 @@ class _SelectorButton extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary.withOpacity(0.07) : AppColors.surface,
+          color: isSelected
+              ? AppColors.primary.withOpacity(0.07)
+              : AppColors.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected ? AppColors.primary : AppColors.divider,
             width: isSelected ? 2 : 1,
           ),
           boxShadow: const [
-            BoxShadow(color: AppColors.cardShadow, blurRadius: 10, offset: Offset(0, 3))
+            BoxShadow(
+                color: AppColors.cardShadow,
+                blurRadius: 10,
+                offset: Offset(0, 3))
           ],
         ),
         child: Row(
@@ -354,7 +367,8 @@ class _SelectorButton extends StatelessWidget {
                 borderRadius: BorderRadius.circular(13),
               ),
               child: Icon(icon,
-                  color: isSelected ? AppColors.primary : AppColors.textHint, size: 24),
+                  color: isSelected ? AppColors.primary : AppColors.textHint,
+                  size: 24),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -366,7 +380,9 @@ class _SelectorButton extends StatelessWidget {
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
-                      color: isSelected ? AppColors.primary : AppColors.textPrimary,
+                      color: isSelected
+                          ? AppColors.primary
+                          : AppColors.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -445,9 +461,11 @@ class _ModeBottomSheet extends StatelessWidget {
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
                 margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                 decoration: BoxDecoration(
-                  color: isSelected ? AppColors.primary : AppColors.surfaceVariant,
+                  color:
+                      isSelected ? AppColors.primary : AppColors.surfaceVariant,
                   borderRadius: BorderRadius.circular(30),
                   border: Border.all(
                     color: isSelected ? AppColors.primary : AppColors.divider,
@@ -470,14 +488,18 @@ class _ModeBottomSheet extends StatelessWidget {
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
-                              color: isSelected ? Colors.white : AppColors.textPrimary,
+                              color: isSelected
+                                  ? Colors.white
+                                  : AppColors.textPrimary,
                             ),
                           ),
                           Text(
                             mode['desc'] as String,
                             style: TextStyle(
                               fontSize: 12,
-                              color: isSelected ? Colors.white70 : AppColors.textSecondary,
+                              color: isSelected
+                                  ? Colors.white70
+                                  : AppColors.textSecondary,
                             ),
                           ),
                         ],
@@ -549,9 +571,11 @@ class _ProficiencyBottomSheet extends StatelessWidget {
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
                 margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
                 decoration: BoxDecoration(
-                  color: isSelected ? AppColors.primary : AppColors.surfaceVariant,
+                  color:
+                      isSelected ? AppColors.primary : AppColors.surfaceVariant,
                   borderRadius: BorderRadius.circular(30),
                   border: Border.all(
                     color: isSelected ? AppColors.primary : AppColors.divider,
@@ -565,7 +589,8 @@ class _ProficiencyBottomSheet extends StatelessWidget {
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
-                        color: isSelected ? Colors.white : AppColors.textPrimary,
+                        color:
+                            isSelected ? Colors.white : AppColors.textPrimary,
                       ),
                     ),
                     if (isSelected)

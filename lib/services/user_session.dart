@@ -1,7 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_service.dart';
 
-class UserSession {
+class UserSession extends ChangeNotifier {
   static final UserSession instance = UserSession._internal();
   UserSession._internal();
 
@@ -12,18 +13,21 @@ class UserSession {
     final prefs = await SharedPreferences.getInstance();
     _username = prefs.getString('auth_username') ?? '';
     proficiencyLevel = prefs.getString('proficiency_level') ?? proficiencyLevel;
+    notifyListeners();
   }
 
   Future<void> setUsername(String username) async {
     _username = username.trim();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('auth_username', _username);
+    notifyListeners();
   }
 
   Future<void> setProficiencyLevel(String value) async {
     proficiencyLevel = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('proficiency_level', value);
+    notifyListeners();
   }
 
   /// The saved username, with a sensible fallback.
@@ -52,6 +56,7 @@ class UserSession {
   Future<void> signOut() async {
     _username = '';
     await AuthService.instance.signOut();
+    notifyListeners();
   }
 
   // ── Private helpers ──────────────────────────────────────────────────────
