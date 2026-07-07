@@ -395,7 +395,7 @@ class _AppDrawer extends StatelessWidget {
                     width: 60,
                     height: 60,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.25),
+                      color: Colors.white.withValues(alpha: 0.25),
                       shape: BoxShape.circle,
                     ),
                     child: Center(
@@ -417,9 +417,9 @@ class _AppDrawer extends StatelessWidget {
                         fontSize: 18,
                       )),
                   const SizedBox(height: 2),
-                  Text('Username account',
+                  const Text('Username account',
                       style:
-                          const TextStyle(color: Colors.white70, fontSize: 13)),
+                          TextStyle(color: Colors.white70, fontSize: 13)),
                 ],
               ),
             ),
@@ -471,7 +471,7 @@ class _AppDrawer extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: AppColors.errorLight,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.error.withOpacity(0.3)),
+                    border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
                   ),
                   child: const Row(
                     children: [
@@ -538,7 +538,7 @@ class _SpeakerHero extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: AppColors.accent.withOpacity(0.45),
+            color: AppColors.accent.withValues(alpha: 0.45),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -558,7 +558,7 @@ class _SpeakerHero extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                        color: Colors.white.withOpacity(0.08), width: 2),
+                        color: Colors.white.withValues(alpha: 0.08), width: 2),
                   ),
                 ),
               ),
@@ -571,7 +571,7 @@ class _SpeakerHero extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                        color: Colors.white.withOpacity(0.1), width: 2),
+                        color: Colors.white.withValues(alpha: 0.1), width: 2),
                   ),
                 ),
               ),
@@ -582,7 +582,7 @@ class _SpeakerHero extends StatelessWidget {
                   width: 65,
                   height: 65,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.07),
+                    color: Colors.white.withValues(alpha: 0.07),
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -596,14 +596,14 @@ class _SpeakerHero extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                        color: Colors.white.withOpacity(0.07), width: 2),
+                        color: Colors.white.withValues(alpha: 0.07), width: 2),
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(22),
+              const Padding(
+                padding: EdgeInsets.all(22),
                 child: Row(
-                  children: const [
+                  children: [
                     _SpeakerIllustration(),
                     SizedBox(width: 20),
                     Expanded(child: _SpeakerCopy()),
@@ -634,7 +634,7 @@ class _SpeakerIllustration extends StatelessWidget {
               width: 88,
               height: 88,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
             ),
@@ -642,7 +642,7 @@ class _SpeakerIllustration extends StatelessWidget {
               width: 66,
               height: 66,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.15),
+                color: Colors.white.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
             ),
@@ -660,7 +660,7 @@ class _SpeakerIllustration extends StatelessWidget {
                       width: 5,
                       height: h,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.75),
+                        color: Colors.white.withValues(alpha: 0.75),
                         borderRadius: BorderRadius.circular(3),
                       ),
                     ),
@@ -677,11 +677,11 @@ class _SpeakerCopy extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return const Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'AI Pronunciation\nCoach',
           style: TextStyle(
             color: Colors.white,
@@ -690,8 +690,8 @@ class _SpeakerCopy extends StatelessWidget {
             height: 1.3,
           ),
         ),
-        const SizedBox(height: 8),
-        const Text(
+        SizedBox(height: 8),
+        Text(
           'Real-time feedback on your English pronunciation, powered by advanced AI models.',
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
@@ -701,11 +701,11 @@ class _SpeakerCopy extends StatelessWidget {
             height: 1.5,
           ),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: const [
+          children: [
             _HeroPill('Real-time'),
             _HeroPill('Accurate'),
           ],
@@ -724,9 +724,9 @@ class _HeroPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.15),
+        color: Colors.white.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.3)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
       ),
       child: Text(label,
           style: const TextStyle(
@@ -779,7 +779,7 @@ class _RecentSession extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: _scoreColor.withOpacity(0.12),
+              color: _scoreColor.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Center(

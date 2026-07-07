@@ -72,10 +72,10 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
         children: [
           Positioned(top: -40, right: -40,
             child: Container(width: 180, height: 180,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.accentLight.withOpacity(0.35)))),
+              decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.accentLight.withValues(alpha: 0.35)))),
           Positioned(bottom: -60, left: -40,
             child: Container(width: 200, height: 200,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.accentLight.withOpacity(0.3)))),
+              decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.accentLight.withValues(alpha: 0.3)))),
           SafeArea(
             child: FadeTransition(
               opacity: _fadeAnim,

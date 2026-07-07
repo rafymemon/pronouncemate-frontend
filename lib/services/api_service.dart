@@ -2,12 +2,14 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 
 class ApiService {
   // Android emulator → use 10.0.2.2 to reach your laptop
   // Physical device → use your laptop's actual IP (e.g. 192.168.1.5)
   // Find your IP: ipconfig (Windows) / ifconfig (Mac/Linux)
-  static const String baseUrl = "http://10.0.2.2:8000/api";
+  static const String ipAddress = "192.168.100.10:8000";
+  static const String baseUrl = "http://$ipAddress/api";
 
   // ── Token management ───────────────────────────────────
   static Future<String?> getToken() async {
@@ -105,24 +107,60 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
-  // lib/services/api_service.dart — add these methods
+  // lib/services/api_service.dart — replace getScripts method
 
-  static Future<Map<String, dynamic>> getScripts({
-    String? level,
-    String? mode,
-  }) async {
-    String url = '$baseUrl/scripts/';
-    final params = <String>[];
-    if (level != null) params.add('level=$level');
-    if (mode != null) params.add('mode=$mode');
-    if (params.isNotEmpty) url += '?${params.join('&')}';
+static Future<Map<String, dynamic>> getScripts({
+  String? level,
+  String? mode,
+}) async {
+  try {
+    // Build URL with optional filters
+    final params = <String, String>{};
+    if (level != null && level != 'all') params['level'] = level;
+    if (mode  != null && mode  != 'all') params['mode']  = mode;
 
-    final response = await http.get(
-      Uri.parse(url),
-      headers: await authHeaders,
-    );
-    return jsonDecode(response.body);
+  final uri = Uri.http(
+        ApiService.ipAddress, // Dynamically uses your laptop IP configuration
+        '/api/scripts/',
+        params.isNotEmpty ? params : null,
+      );
+
+    print('[API] Fetching scripts from: $uri');
+
+    // Scripts endpoint is public — no auth required
+    // But send token if available for uploaded scripts
+    final token = await getToken();
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+    };
+    if (token != null) {
+      headers['Authorization'] = 'Token $token';
+    }
+
+    final response = await http.get(uri, headers: headers)
+        .timeout(const Duration(seconds: 10));
+
+    print('[API] Scripts response status: ${response.statusCode}');
+    print('[API] Scripts response body: ${response.body.substring(0, 200)}');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      print('[API] Builtin count: ${(data['builtin'] as List?)?.length ?? 0}');
+      print('[API] Uploaded count: ${(data['uploaded'] as List?)?.length ?? 0}');
+      return data;
+    } else {
+      print('[API] Error: ${response.statusCode} — ${response.body}');
+      return {'builtin': [], 'uploaded': [], 'error': 'Server error ${response.statusCode}'};
+    }
+
+  } on TimeoutException {
+    print('[API] Request timed out');
+    return {'builtin': [], 'uploaded': [], 'error': 'Connection timed out'};
+  } catch (e) {
+    print('[API] Exception: $e');
+    return {'builtin': [], 'uploaded': [], 'error': e.toString()};
   }
+}
 
   static Future<Map<String, dynamic>> uploadScriptText({
     required String title,

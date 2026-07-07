@@ -94,7 +94,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                           borderRadius: BorderRadius.circular(28),
                           boxShadow: [
-                            BoxShadow(color: AppColors.accent.withOpacity(0.35), blurRadius: 24, offset: const Offset(0, 10)),
+                            BoxShadow(color: AppColors.accent.withValues(alpha: 0.35), blurRadius: 24, offset: const Offset(0, 10)),
                           ],
                         ),
                         child: Column(
@@ -111,7 +111,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     Text('${summary.totalSessions}', style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
                                   ],
                                 ),
-                                Container(height: 50, width: 1, color: Colors.white.withOpacity(0.3)),
+                                Container(height: 50, width: 1, color: Colors.white.withValues(alpha: 0.3)),
                                 Column(
                                   children: [
                                     const Text('Best Score', style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500)),
@@ -149,7 +149,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 leading: Container(
                                   padding: const EdgeInsets.all(10),
                                   decoration: BoxDecoration(
-                                    color: AppColors.primary.withOpacity(0.1),
+                                    color: AppColors.primary.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: const Icon(Icons.history_rounded, color: AppColors.primary),

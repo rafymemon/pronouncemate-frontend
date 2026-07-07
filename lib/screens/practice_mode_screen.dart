@@ -583,7 +583,7 @@ class _PracticeModeScreenState extends State<PracticeModeScreen> {
                                 color: AppColors.error,
                                 fontWeight: FontWeight.w600,
                                 backgroundColor:
-                                    AppColors.error.withOpacity(0.1),
+                                    AppColors.error.withValues(alpha: 0.1),
                                 decoration: TextDecoration.underline,
                                 decorationColor: AppColors.error,
                               ),
@@ -611,7 +611,7 @@ class _PracticeModeScreenState extends State<PracticeModeScreen> {
             decoration: BoxDecoration(
               color: AppColors.errorLight,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.error.withOpacity(0.3)),
+              border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
             ),
             child: Row(
               children: [
@@ -629,7 +629,7 @@ class _PracticeModeScreenState extends State<PracticeModeScreen> {
                   ),
                 ),
                 Icon(Icons.volume_up_rounded,
-                    color: AppColors.error.withOpacity(0.7), size: 20),
+                    color: AppColors.error.withValues(alpha: 0.7), size: 20),
               ],
             ),
           ),

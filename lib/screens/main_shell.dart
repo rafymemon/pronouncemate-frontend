@@ -30,7 +30,7 @@ class _MainShellState extends State<MainShell> {
         decoration: BoxDecoration(
           boxShadow: [
             BoxShadow(
-              color: AppColors.primary.withOpacity(0.12),
+              color: AppColors.primary.withValues(alpha: 0.12),
               blurRadius: 20,
               offset: const Offset(0, -4),
             ),
@@ -341,7 +341,7 @@ class _SelectorButton extends StatelessWidget {
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppColors.primary.withOpacity(0.07)
+              ? AppColors.primary.withValues(alpha: 0.07)
               : AppColors.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
@@ -362,7 +362,7 @@ class _SelectorButton extends StatelessWidget {
               height: 50,
               decoration: BoxDecoration(
                 color: isSelected
-                    ? AppColors.primary.withOpacity(0.12)
+                    ? AppColors.primary.withValues(alpha: 0.12)
                     : AppColors.surfaceVariant,
                 borderRadius: BorderRadius.circular(13),
               ),

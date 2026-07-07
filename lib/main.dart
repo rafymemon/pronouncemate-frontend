@@ -51,7 +51,6 @@ class PronounceMateApp extends StatelessWidget {
       routes: {
         '/home':     (ctx) => const HomeScreen(),
         '/scripts':  (ctx) => const ScriptSelectionScreen(),
-        '/practice': (ctx) => const ScriptSelectionScreen(),
       },
     );
   }

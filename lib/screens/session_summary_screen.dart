@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'active_session_screens.dart';
 
 class SessionSummaryScreen extends StatelessWidget {
-  const SessionSummaryScreen({Key? key}) : super(key: key);
+  const SessionSummaryScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

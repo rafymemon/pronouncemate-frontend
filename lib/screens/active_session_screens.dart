@@ -6,6 +6,8 @@ import '../services/recording_service.dart';
 import '../services/api_service.dart';
 import '../services/user_progress_service.dart';
 
+
+
 enum WordStatus { pending, correct, error }
 enum SessionState { idle, recording, processing, done }
 
@@ -179,7 +181,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
   Future<void> _playAudio(String audioPath) async {
     try {
       // audioPath is a relative server path e.g. /media/feedback/word.mp3
-      final url = 'http://10.0.2.2:8000$audioPath';
+      final url = 'http://${ApiService.ipAddress}$audioPath';
       await _player.setUrl(url);
       await _player.play();
     } catch (e) {
@@ -218,7 +220,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       appBar: AppBar(
         title: Text(widget.sessionTitle),
         backgroundColor: const Color(0xFF1A3A6B),
-        foregroundColor: Colors.white,
+        foregroundColor: const Color.fromARGB(255, 255, 161, 161),
       ),
       body: Column(children: [
 
@@ -449,7 +451,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(text,
@@ -511,7 +513,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [BoxShadow(
-          color: Colors.black.withOpacity(0.06),
+          color: Colors.black.withValues(alpha: 0.06),
           blurRadius: 10, offset: const Offset(0, -4),
         )],
       ),

@@ -17,7 +17,7 @@ class PronouncemateLogo extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppColors.primary,
             borderRadius: BorderRadius.circular(size * 0.28),
-            boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.4), blurRadius: 18, offset: const Offset(0, 6))]),
+            boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.4), blurRadius: 18, offset: const Offset(0, 6))]),
           child: Icon(Icons.record_voice_over_rounded, color: Colors.white, size: size * 0.52)),
         const SizedBox(height: 12),
         RichText(
@@ -109,7 +109,7 @@ class StatCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(width: 34, height: 34,
-            decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(9)),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(9)),
             child: Icon(icon, color: color, size: 18)),
           const SizedBox(height: 8),
           Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
