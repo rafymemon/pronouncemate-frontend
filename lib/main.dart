@@ -14,8 +14,7 @@ import 'theme/app_theme.dart';
 import 'screens/welcome_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_shell.dart';
-// Note: Make sure these files exist in your screens folder
-import 'screens/home_screen.dart'; 
+import 'screens/home_screen.dart';
 import 'screens/script_selection_screen.dart';
 
 void main() async {

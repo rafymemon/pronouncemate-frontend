@@ -107,80 +107,67 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
-  // lib/services/api_service.dart — replace getScripts method
+  // ── Scripts ─────────────────────────────────────────────
+  static Future<Map<String, dynamic>> getScripts({
+    String? mode,
+    String? level,
+  }) async {
+    try {
+      final params = <String, String>{};
+      if (mode != null) params['mode'] = mode;
+      if (level != null) params['level'] = level;
 
-static Future<Map<String, dynamic>> getScripts({
-  String? level,
-  String? mode,
-}) async {
-  try {
-    // Build URL with optional filters
-    final params = <String, String>{};
-    if (level != null && level != 'all') params['level'] = level;
-    if (mode  != null && mode  != 'all') params['mode']  = mode;
+      final uri = Uri.parse('$baseUrl/scripts/').replace(queryParameters: params);
 
-  final uri = Uri.http(
-        ApiService.ipAddress, // Dynamically uses your laptop IP configuration
-        '/api/scripts/',
-        params.isNotEmpty ? params : null,
-      );
+      final token = await getToken();
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Token $token',
+      };
 
-    print('[API] Fetching scripts from: $uri');
+      final response = await http.get(uri, headers: headers)
+          .timeout(const Duration(seconds: 10));
 
-    // Scripts endpoint is public — no auth required
-    // But send token if available for uploaded scripts
-    final token = await getToken();
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-    };
-    if (token != null) {
-      headers['Authorization'] = 'Token $token';
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return {
+        'builtin': [],
+        'uploaded': [],
+        'error': 'Server error ${response.statusCode}'
+      };
+    } catch (e) {
+      return {'builtin': [], 'uploaded': [], 'error': e.toString()};
     }
-
-    final response = await http.get(uri, headers: headers)
-        .timeout(const Duration(seconds: 10));
-
-    print('[API] Scripts response status: ${response.statusCode}');
-    print('[API] Scripts response body: ${response.body.substring(0, 200)}');
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      print('[API] Builtin count: ${(data['builtin'] as List?)?.length ?? 0}');
-      print('[API] Uploaded count: ${(data['uploaded'] as List?)?.length ?? 0}');
-      return data;
-    } else {
-      print('[API] Error: ${response.statusCode} — ${response.body}');
-      return {'builtin': [], 'uploaded': [], 'error': 'Server error ${response.statusCode}'};
-    }
-
-  } on TimeoutException {
-    print('[API] Request timed out');
-    return {'builtin': [], 'uploaded': [], 'error': 'Connection timed out'};
-  } catch (e) {
-    print('[API] Exception: $e');
-    return {'builtin': [], 'uploaded': [], 'error': e.toString()};
   }
-}
 
   static Future<Map<String, dynamic>> uploadScriptText({
     required String title,
     required String content,
     String level = 'intermediate',
+    String? mode,
   }) async {
+    final body = {
+      'title': title,
+      'content': content,
+      'level': level,
+      if (mode != null) 'mode': mode,
+    };
+
     final response = await http.post(
       Uri.parse('$baseUrl/scripts/upload/'),
       headers: await authHeaders,
-      body: jsonEncode({
-        'title': title,
-        'content': content,
-        'level': level,
-      }),
+      body: jsonEncode(body),
     );
     return jsonDecode(response.body);
   }
 
-  static Future<Map<String, dynamic>> uploadScriptFile(File file,
-      {String? title, String level = 'intermediate'}) async {
+  static Future<Map<String, dynamic>> uploadScriptFile(
+    File file, {
+    String? title,
+    String level = 'intermediate',
+    String? mode,
+  }) async {
     final token = await getToken();
     final request = http.MultipartRequest(
       'POST',
@@ -189,6 +176,7 @@ static Future<Map<String, dynamic>> getScripts({
     request.headers['Authorization'] = 'Token $token';
     if (title != null) request.fields['title'] = title;
     request.fields['level'] = level;
+    if (mode != null) request.fields['mode'] = mode;
     request.files.add(await http.MultipartFile.fromPath('file', file.path));
 
     final streamed = await request.send();

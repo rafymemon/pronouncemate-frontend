@@ -1,22 +1,22 @@
 import 'package:flutter/material.dart';
-import 'active_session_screens.dart';
+import 'active_session_screen.dart';
 
 class SessionSummaryScreen extends StatelessWidget {
-  const SessionSummaryScreen({super.key});
+  final List<WordResult> words;
+  final double sessionScore;
+  final String script;
+  final String sessionTitle;
+
+  const SessionSummaryScreen({
+    super.key,
+    required this.words,
+    required this.sessionScore,
+    required this.script,
+    this.sessionTitle = 'Practice',
+  });
 
   @override
   Widget build(BuildContext context) {
-    // Receive data from ActiveSessionScreen
-    final args = ModalRoute.of(context)!.settings.arguments
-        as Map<String, dynamic>;
-
-    final words = (args['words'] as List?)
-        ?.whereType<WordResult>()
-        .toList() ??
-      <WordResult>[];
-    final sessionScore = args['sessionScore'] as double;
-    final script       = args['script']       as String;
-
     final correct  = words.where((w) => w.status == WordStatus.correct).length;
     final errors   = words.where((w) => w.status == WordStatus.error).toList();
     final grade    = _getGrade(sessionScore);
@@ -92,7 +92,7 @@ class SessionSummaryScreen extends StatelessWidget {
                         color: Colors.red.shade50,
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Text(e.word,
+                      child: Text(e.text,
                           style: TextStyle(
                               fontSize: 16, fontWeight: FontWeight.bold,
                               color: Colors.red.shade700)),
@@ -102,16 +102,16 @@ class SessionSummaryScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(e.type.toUpperCase(),
+                          Text((e.type ?? 'error').toUpperCase(),
                               style: const TextStyle(
                                   fontSize: 11, color: Color(0xFF94A3B8),
                                   fontWeight: FontWeight.w600,
                                   letterSpacing: 1)),
-                          Text("Score: ${e.score.toStringAsFixed(0)}%",
+                          Text("Score: ${(e.score ?? 0).toStringAsFixed(0)}%",
                               style: const TextStyle(
                                   fontSize: 13, color: Color(0xFF475569))),
-                          if (e.explanation != null)
-                            Text(e.explanation!,
+                          if (e.tip != null)
+                            Text(e.tip!,
                                 style: const TextStyle(
                                     fontSize: 12, color: Color(0xFF64748B))),
                         ],

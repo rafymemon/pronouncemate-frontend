@@ -10,7 +10,8 @@ class RecordingService {
     return await _recorder.hasPermission();
   }
 
-  Future<void> startRecording() async {
+  // Renamed to 'start' to perfectly match your UI screen
+  Future<void> start() async {
     final dir  = await getTemporaryDirectory();
     _currentPath = '${dir.path}/chunk_${DateTime.now().millisecondsSinceEpoch}.wav';
 
@@ -25,7 +26,8 @@ class RecordingService {
     );
   }
 
-  Future<File?> stopRecording() async {
+  // Renamed to 'stop' to perfectly match your UI screen
+  Future<File?> stop() async {
     final path = await _recorder.stop();
     if (path != null) {
       return File(path);
@@ -33,7 +35,8 @@ class RecordingService {
     return null;
   }
 
-  bool get isRecording => _recorder.isRecording as bool;
+  // Updated to safely handle the Future<bool> required by the record package
+  Future<bool> get isRecording async => await _recorder.isRecording();
 
   void dispose() {
     _recorder.dispose();

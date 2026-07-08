@@ -1,8 +1,9 @@
+// lib/screens/main_shell.dart
+
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common_widgets.dart';
 import 'home_screen.dart';
-import 'practice_mode_screen.dart';
 import 'script_selection_screen.dart';
 
 class MainShell extends StatefulWidget {
@@ -101,6 +102,21 @@ class _PracticeTabState extends State<_PracticeTab> {
     'Beginner',
   ];
 
+  // ── Mapping helpers for ScriptSelectionScreen ──────────────────
+  String? _getModeValue(String? modeName) {
+    const map = {
+      'Public Speaking': 'public_speaking',
+      'Daily Conversation': 'daily_conversation',
+      'Script-Based': 'script_based',
+    };
+    return map[modeName];
+  }
+
+  String? _getLevelValue(String? levelName) {
+    if (levelName == null) return null;
+    return levelName.toLowerCase().replaceAll(' ', '_');
+  }
+
   void _showModeSelector() {
     showModalBottomSheet(
       context: context,
@@ -185,8 +201,7 @@ class _PracticeTabState extends State<_PracticeTab> {
                 Navigator.of(ctx).pop();
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) =>
-                        const ScriptSelectionScreen(initialTabIndex: 0),
+                    builder: (_) => const ScriptSelectionScreen(),
                   ),
                 );
               },
@@ -203,10 +218,7 @@ class _PracticeTabState extends State<_PracticeTab> {
                 Navigator.of(ctx).pop();
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => const ScriptSelectionScreen(
-                      initialTabIndex: 1,
-                      openUploadOptions: true,
-                    ),
+                    builder: (_) => const ScriptSelectionScreen(),
                   ),
                 );
               },
@@ -218,11 +230,15 @@ class _PracticeTabState extends State<_PracticeTab> {
       return;
     }
 
+    // For Public Speaking and Daily Conversation, navigate with filters
+    final modeValue = _getModeValue(_selectedMode);
+    final levelValue = _getLevelValue(_selectedProficiency);
+
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => PracticeModeScreen(
-          mode: _selectedMode!,
-          level: _selectedProficiency!,
+        builder: (_) => ScriptSelectionScreen.withFilters(
+          preselectedMode: modeValue!,
+          preselectedLevel: levelValue!,
         ),
       ),
     );
