@@ -18,6 +18,7 @@ dependencies:
   shared_preferences: ^2.2.2   # store auth token locally
   path_provider: ^2.1.2   # temp file storage
   file_picker: ^8.0.0
+  fl_chart: ^0.68.0  # For line and pie charts
 
 dev_dependencies:
   flutter_test:

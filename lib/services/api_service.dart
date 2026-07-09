@@ -183,4 +183,39 @@ class ApiService {
     final response = await http.Response.fromStream(streamed);
     return jsonDecode(response.body);
   }
+
+  // Add inside ApiService class
+
+  static Future<Map<String, dynamic>> getDashboardSummary() async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/dashboard/'),
+            headers: await authHeaders,
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return {'error': 'Server error ${response.statusCode}'};
+    } catch (e) {
+      return {'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getProgressAnalytics() async {
+  try {
+    final response = await http.get(
+      Uri.parse('$baseUrl/progress/analytics/'),
+      headers: await authHeaders,
+    ).timeout(const Duration(seconds: 15));
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    return {'error': 'Server error ${response.statusCode}'};
+  } catch (e) {
+    return {'error': e.toString()};
+  }
+}
 }
