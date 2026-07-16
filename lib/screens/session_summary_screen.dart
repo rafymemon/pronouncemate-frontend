@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 import 'active_session_screen.dart';
 
+// 1. Added your new imports here
+import '../widgets/practice_mistake_button.dart';
+// import '../providers/practice_provider.dart';
+import 'practice_session_screen.dart';
+import '../models/practice_models.dart';
+
+
 class SessionSummaryScreen extends StatelessWidget {
   final List<WordResult> words;
   final double sessionScore;
@@ -14,6 +21,33 @@ class SessionSummaryScreen extends StatelessWidget {
     required this.script,
     this.sessionTitle = 'Practice',
   });
+
+  void _startPracticeSession(BuildContext context, List<WordResult> errorList) {
+    // 1. Convert WordResult objects into MistakeWord objects
+    final List<MistakeWord> formattedMistakes = errorList.map((error) {
+      return MistakeWord(
+        word: error.text, 
+        errorType: error.type ?? 'mispronunciation',
+        perWordScore: error.score ?? 0.0,
+        severity: 3 , // You can adjust this based on the score later!
+        refPhonemes: [],
+        predPhonemes: [],
+        explanation: error.tip ?? '',
+      );
+    }).toList();
+
+    // 2. Navigate and pass the required arguments!
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        // Make sure 'const' is REMOVED from the front of PracticeSessionScreen here!
+        builder: (context) => PracticeSessionScreen(
+          mistakeWords: formattedMistakes,
+          originalSessionId: 'retry_session_${DateTime.now().millisecondsSinceEpoch}', 
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -120,6 +154,17 @@ class SessionSummaryScreen extends StatelessWidget {
                   ],
                 ),
               )),
+              
+              const SizedBox(height: 16),
+              
+              // 3. Added your Practice Mistake Button here!
+              // It only renders if the errors list is NOT empty.
+              PracticeMistakesButton(
+                // Note: Ensure your PracticeMistakesButton is configured to accept 
+                // whatever data type you pass here. You may need to adapt it slightly 
+                // since this screen uses the `WordResult` list instead of raw JSON.
+                onPressed: () => _startPracticeSession(context, errors),
+              ),
             ],
 
             if (errors.isEmpty)
@@ -132,8 +177,11 @@ class SessionSummaryScreen extends StatelessWidget {
                 child: Row(children: [
                   Icon(Icons.check_circle, color: Colors.green.shade600, size: 28),
                   const SizedBox(width: 12),
-                  const Text("Perfect pronunciation! No errors detected.",
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                  // Wrapped in Expanded so it can safely wrap to a new line
+                  const Expanded(
+                    child: Text("Perfect pronunciation! No errors detected.",
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                  ),
                 ]),
               ),
 

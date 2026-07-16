@@ -207,7 +207,7 @@ class ApiService {
   static Future<Map<String, dynamic>> getProgressAnalytics() async {
   try {
     final response = await http.get(
-      Uri.parse('$baseUrl/progress/analytics/'),
+      Uri.parse('$baseUrl/analytics/'),
       headers: await authHeaders,
     ).timeout(const Duration(seconds: 15));
     if (response.statusCode == 200) {
