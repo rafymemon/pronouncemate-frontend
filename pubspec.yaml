@@ -14,11 +14,11 @@ dependencies:
   firebase_auth: ^5.3.0
   http: ^1.2.0
   record: ^6.1.1          # microphone recording
-  just_audio: ^0.9.36     # play gTTS audio feedback
   shared_preferences: ^2.2.2   # store auth token locally
   path_provider: ^2.1.2   # temp file storage
   file_picker: ^8.0.0
   fl_chart: ^0.68.0  # For line and pie charts
+  just_audio: ^0.9.46
 
 dev_dependencies:
   flutter_test:

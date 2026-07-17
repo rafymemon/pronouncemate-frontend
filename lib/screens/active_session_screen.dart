@@ -16,6 +16,7 @@ class WordResult {
   String? tip;
   double? score;
   String? type;
+  String? audioPath;
 
   WordResult(this.text) : status = WordStatus.pending;
 }
@@ -57,12 +58,13 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
   String?  _audioPath;
   Duration _elapsed        = Duration.zero;
   late Stopwatch _stopwatch;
+  late String _sessionId;  // ← ADDED: unique ID for this session
 
   @override
   void initState() {
     super.initState();
     _stopwatch = Stopwatch();
-    // Parse script into words, stripping punctuation
+    _sessionId = 'sess_${DateTime.now().millisecondsSinceEpoch}';  // ← ADDED
     _words = widget.scriptText
         .split(RegExp(r'\s+'))
         .where((w) => w.trim().isNotEmpty)
@@ -70,7 +72,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
         .toList();
   }
 
-  // ── Start recording ───────────────────────────────────
   Future<void> _startRecording() async {
     final ok = await _rec.hasPermission();
     if (!ok) {
@@ -87,11 +88,13 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       _correctCount    = 0;
       _score           = 0;
       _grade           = '';
-      for (final w in _words) w.status = WordStatus.pending;
+      for (final w in _words) {
+        w.status = WordStatus.pending;
+        w.audioPath = null;
+      }
     });
   }
 
-  // ── Evaluate ──────────────────────────────────────────
   Future<void> _evaluate() async {
     _stopwatch.stop();
     final file = await _rec.stop();
@@ -101,15 +104,13 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     setState(() => _state = _SessionState.processing);
 
     try {
-      final result = await ApiService.analyzeAudio(
-          file, widget.scriptText);
+      final result = await ApiService.analyzeAudio(file, widget.scriptText);
 
       final wordList = (result['words'] as List?) ?? [];
       final feedback = (result['feedback'] as List?) ?? [];
       final score    = (result['score'] as num?)?.toDouble() ?? 0.0;
       final grade    = result['grade']?.toString() ?? '';
 
-      // Build lookup by word
       final Map<String, dynamic> wordMap = {};
       for (final w in wordList) {
         wordMap[w['word'].toString().toLowerCase()] = w;
@@ -120,16 +121,14 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
         final r = wordMap[w.text];
         if (r == null) continue;
         final type = r['type']?.toString() ?? 'correct';
-        w.status = type == 'correct'
-            ? WordStatus.correct
-            : WordStatus.error;
+        w.status = type == 'correct' ? WordStatus.correct : WordStatus.error;
         w.type = type;
         if (type == 'correct') correct++;
         w.tip = r['explanation']?.toString();
         w.score = (r['score'] as num?)?.toDouble();
+        w.audioPath = r['audio_path']?.toString();
       }
 
-      // Show first feedback item if any
       String? fbText;
       String? fbWord;
       String? fbAudio;
@@ -150,7 +149,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
         _audioPath       = fbAudio;
       });
 
-      // Navigate to summary screen with results
       _navigateToSummary();
 
     } catch (e) {
@@ -161,7 +159,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     }
   }
 
-  // ── Navigate to Summary ───────────────────────────────
+  // ── FIXED: Pass originalSessionId to SessionSummaryScreen ──
   void _navigateToSummary() {
     Navigator.pushReplacement(
       context,
@@ -171,12 +169,12 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
           sessionScore: _score,
           script: widget.scriptText,
           sessionTitle: widget.sessionTitle,
+          originalSessionId: _sessionId,  // ← ADDED
         ),
       ),
     );
   }
 
-  // ── Timer ─────────────────────────────────────────────
   void _startTimer() {
     Future.doWhile(() async {
       await Future.delayed(const Duration(seconds: 1));
@@ -193,7 +191,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     return '$m:$s';
   }
 
-  // ── Play audio ────────────────────────────────────────
   Future<void> _playAudio() async {
     if (_audioPath == null) return;
     try {
@@ -203,14 +200,12 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     } catch (_) {}
   }
 
-  // ── End session ───────────────────────────────────────
   void _end() {
     _rec.stop();
     _stopwatch.stop();
     Navigator.pop(context);
   }
 
-  // ── Helpers ───────────────────────────────────────────
   void _snack(String msg, {bool error = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -235,7 +230,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     }
   }
 
-  // ── Build ─────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -269,7 +263,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       ),
       body: Column(children: [
 
-        // ── Stats bar (matches Image 1 top card) ────────
         if (_state == _SessionState.recording ||
             _state == _SessionState.done)
           Container(
@@ -299,7 +292,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
             ),
           ),
 
-        // ── Script content card ──────────────────────────
         Expanded(
           child: Container(
             margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -311,14 +303,12 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Script title
                 Text(widget.sessionTitle,
                     style: const TextStyle(
                         fontSize: 17, fontWeight: FontWeight.bold,
                         color: _textDark)),
                 const Divider(height: 20),
 
-                // Script text with word highlighting
                 Expanded(
                   child: SingleChildScrollView(
                     child: _buildScriptText(),
@@ -329,7 +319,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
           ),
         ),
 
-        // ── Feedback card (matches Image 1 bottom card) ─
         if (_latestFeedback != null)
           Container(
             margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -363,7 +352,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
             ]),
           ),
 
-        // ── Bottom action bar ────────────────────────────
         _buildBottomBar(),
 
         const SizedBox(height: 16),
@@ -371,7 +359,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     );
   }
 
-  // ── Script text with inline word highlighting ─────────
   Widget _buildScriptText() {
     return RichText(
       text: TextSpan(
@@ -445,13 +432,11 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     );
   }
 
-  // ── Bottom button bar ─────────────────────────────────
   Widget _buildBottomBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(children: [
 
-        // IDLE
         if (_state == _SessionState.idle) ...[
           Expanded(
             child: _btn(
@@ -463,7 +448,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
           ),
         ],
 
-        // RECORDING — End + Evaluate (matches Image 1)
         if (_state == _SessionState.recording) ...[
           Expanded(
             flex: 1,
@@ -495,7 +479,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
           ),
         ],
 
-        // PROCESSING
         if (_state == _SessionState.processing)
           Expanded(child: _btn(
             label: 'Analyzing...',
@@ -504,7 +487,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
             onTap: null,
           )),
 
-        // DONE — Retry + Done
         if (_state == _SessionState.done) ...[
           Expanded(
             child: OutlinedButton.icon(

@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 import 'active_session_screen.dart';
-
-// 1. Added your new imports here
 import '../widgets/practice_mistake_button.dart';
-// import '../providers/practice_provider.dart';
+import '../providers/practice_provider.dart';
 import 'practice_session_screen.dart';
 import '../models/practice_models.dart';
-
 
 class SessionSummaryScreen extends StatelessWidget {
   final List<WordResult> words;
   final double sessionScore;
   final String script;
   final String sessionTitle;
+  final String originalSessionId;  // ← ADDED
 
   const SessionSummaryScreen({
     super.key,
@@ -20,34 +19,8 @@ class SessionSummaryScreen extends StatelessWidget {
     required this.sessionScore,
     required this.script,
     this.sessionTitle = 'Practice',
+    this.originalSessionId = '',    // ← ADDED
   });
-
-  void _startPracticeSession(BuildContext context, List<WordResult> errorList) {
-    // 1. Convert WordResult objects into MistakeWord objects
-    final List<MistakeWord> formattedMistakes = errorList.map((error) {
-      return MistakeWord(
-        word: error.text, 
-        errorType: error.type ?? 'mispronunciation',
-        perWordScore: error.score ?? 0.0,
-        severity: 3 , // You can adjust this based on the score later!
-        refPhonemes: [],
-        predPhonemes: [],
-        explanation: error.tip ?? '',
-      );
-    }).toList();
-
-    // 2. Navigate and pass the required arguments!
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        // Make sure 'const' is REMOVED from the front of PracticeSessionScreen here!
-        builder: (context) => PracticeSessionScreen(
-          mistakeWords: formattedMistakes,
-          originalSessionId: 'retry_session_${DateTime.now().millisecondsSinceEpoch}', 
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,6 +28,42 @@ class SessionSummaryScreen extends StatelessWidget {
     final errors   = words.where((w) => w.status == WordStatus.error).toList();
     final grade    = _getGrade(sessionScore);
     final gradeColor = _gradeColor(sessionScore);
+
+    // Build severity breakdown from error types
+    final severityBreakdown = <String, int>{};
+    for (final e in errors) {
+      final type = (e.type ?? 'unknown').toLowerCase();
+      severityBreakdown[type] = (severityBreakdown[type] ?? 0) + 1;
+    }
+
+    String? mostCommonError;
+    int maxCount = 0;
+    severityBreakdown.forEach((type, count) {
+      if (count > maxCount) {
+        maxCount = count;
+        mostCommonError = type;
+      }
+    });
+
+    final topMistakes = errors.map((e) => {
+      'word': e.text,
+      'error_type': e.type ?? 'error',
+      'severity': e.score != null ? (100 - e.score!).round().clamp(1, 10) : 5,
+      'per_word_score': e.score ?? 0.0,
+      'ref_phonemes': <String>[],
+      'pred_phonemes': <String>[],
+      'explanation': e.tip ?? '',
+      'audio_path': e.audioPath,
+    }).toList();
+
+    final mistakeSummary = MistakeSummary(
+      mistakeCount: errors.length,
+      offerPractice: errors.isNotEmpty,
+      severityBreakdown: severityBreakdown,
+      mostCommonError: mostCommonError,
+      words: errors.map((e) => e.text).toList(),
+      topMistakes: topMistakes,
+    );
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -126,10 +135,19 @@ class SessionSummaryScreen extends StatelessWidget {
                         color: Colors.red.shade50,
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Text(e.text,
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.bold,
-                              color: Colors.red.shade700)),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(e.text,
+                              style: TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.bold,
+                                  color: Colors.red.shade700)),
+                          const SizedBox(width: 4),
+                          PronunciationAudioButton(
+                            audioUrl: _fullAudioUrl(e.audioPath),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -154,17 +172,6 @@ class SessionSummaryScreen extends StatelessWidget {
                   ],
                 ),
               )),
-              
-              const SizedBox(height: 16),
-              
-              // 3. Added your Practice Mistake Button here!
-              // It only renders if the errors list is NOT empty.
-              PracticeMistakesButton(
-                // Note: Ensure your PracticeMistakesButton is configured to accept 
-                // whatever data type you pass here. You may need to adapt it slightly 
-                // since this screen uses the `WordResult` list instead of raw JSON.
-                onPressed: () => _startPracticeSession(context, errors),
-              ),
             ],
 
             if (errors.isEmpty)
@@ -177,11 +184,8 @@ class SessionSummaryScreen extends StatelessWidget {
                 child: Row(children: [
                   Icon(Icons.check_circle, color: Colors.green.shade600, size: 28),
                   const SizedBox(width: 12),
-                  // Wrapped in Expanded so it can safely wrap to a new line
-                  const Expanded(
-                    child: Text("Perfect pronunciation! No errors detected.",
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
-                  ),
+                  const Text("Perfect pronunciation! No errors detected.",
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
                 ]),
               ),
 
@@ -224,10 +228,25 @@ class SessionSummaryScreen extends StatelessWidget {
                 ),
               ),
             ]),
+
+            const SizedBox(height: 16),
+
+            // ── Practice Mistakes Button ──────────────────
+            if (errors.isNotEmpty)
+              PracticeMistakesButton(
+                mistakeSummary: mistakeSummary,
+                onPressed: () => _startPracticeSession(context, errors),
+              ),
           ],
         ),
       ),
     );
+  }
+
+  String? _fullAudioUrl(String? path) {
+    if (path == null || path.isEmpty) return null;
+    if (path.startsWith('http')) return path;
+    return 'http://10.0.2.2:8000$path';
   }
 
   Widget _scoreItem(String value, String label, Color color) {
@@ -250,5 +269,119 @@ class SessionSummaryScreen extends StatelessWidget {
     if (score >= 80) return Colors.greenAccent;
     if (score >= 60) return Colors.yellowAccent;
     return Colors.redAccent;
+  }
+
+  // FIXED: Pass required params to PracticeSessionScreen
+  void _startPracticeSession(BuildContext context, List<WordResult> errorWords) {
+    final mistakeWords = errorWords.map((e) => MistakeWord(
+      word: e.text,
+      errorType: e.type ?? 'error',
+      severity: e.score != null ? (100 - e.score!).round().clamp(1, 10) : 5,
+      perWordScore: e.score ?? 0.0,
+      refPhonemes: [],
+      predPhonemes: [],
+      explanation: e.tip ?? '',
+      audioPath: e.audioPath,
+    )).toList();
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PracticeSessionScreen(
+          mistakeWords: mistakeWords,
+          originalSessionId: originalSessionId.isNotEmpty
+              ? originalSessionId
+              : DateTime.now().millisecondsSinceEpoch.toString(),
+        ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Self-contained audio button
+// ═══════════════════════════════════════════════════════════
+class PronunciationAudioButton extends StatefulWidget {
+  final String? audioUrl;
+  const PronunciationAudioButton({super.key, this.audioUrl});
+
+  @override
+  State<PronunciationAudioButton> createState() => _PronunciationAudioButtonState();
+}
+
+class _PronunciationAudioButtonState extends State<PronunciationAudioButton> {
+  final AudioPlayer _player = AudioPlayer();
+  bool _isPlaying = false;
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _play() async {
+    if (widget.audioUrl == null || widget.audioUrl!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Audio not available')),
+      );
+      return;
+    }
+
+    try {
+      setState(() => _isLoading = true);
+      await _player.setUrl(widget.audioUrl!);
+      await _player.play();
+      setState(() {
+        _isLoading = false;
+        _isPlaying = true;
+      });
+
+      _player.playerStateStream.listen((state) {
+        if (state.processingState == ProcessingState.completed && mounted) {
+          setState(() => _isPlaying = false);
+        }
+      });
+    } catch (e) {
+      debugPrint('Audio playback error: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isPlaying = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to play audio')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.audioUrl == null || widget.audioUrl!.isEmpty) {
+      return const Icon(Icons.volume_off, color: Color(0xFFCBD5E1), size: 18);
+    }
+
+    return InkWell(
+      onTap: _isLoading ? null : _play,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        child: _isLoading
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF1A3A6B),
+                ),
+              )
+            : Icon(
+                _isPlaying ? Icons.volume_up : Icons.volume_up_outlined,
+                color: const Color(0xFF1A3A6B),
+                size: 18,
+              ),
+      ),
+    );
   }
 }
