@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../services/recording_service.dart';
 import '../services/api_service.dart';
+import '../config.dart';  // ← ADDED
 import 'session_summary_screen.dart';
 
 enum WordStatus { pending, correct, error }
@@ -56,15 +57,16 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
   String?  _latestFeedback;
   String?  _latestFeedbackWord;
   String?  _audioPath;
+  String?  _recordingUrl;
   Duration _elapsed        = Duration.zero;
   late Stopwatch _stopwatch;
-  late String _sessionId;  // ← ADDED: unique ID for this session
+  late String _sessionId;
 
   @override
   void initState() {
     super.initState();
     _stopwatch = Stopwatch();
-    _sessionId = 'sess_${DateTime.now().millisecondsSinceEpoch}';  // ← ADDED
+    _sessionId = 'sess_${DateTime.now().millisecondsSinceEpoch}';
     _words = widget.scriptText
         .split(RegExp(r'\s+'))
         .where((w) => w.trim().isNotEmpty)
@@ -85,6 +87,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       _state           = _SessionState.recording;
       _latestFeedback  = null;
       _audioPath       = null;
+      _recordingUrl    = null;
       _correctCount    = 0;
       _score           = 0;
       _grade           = '';
@@ -139,6 +142,8 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
         fbAudio = f['audio_path']?.toString();
       }
 
+      _recordingUrl = result['recording_url']?.toString();
+
       setState(() {
         _state           = _SessionState.done;
         _score           = score;
@@ -154,12 +159,9 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     } catch (e) {
       setState(() => _state = _SessionState.idle);
       _snack('Analysis failed. Try again.', error: true);
-    } finally {
-      file.delete();
     }
   }
 
-  // ── FIXED: Pass originalSessionId to SessionSummaryScreen ──
   void _navigateToSummary() {
     Navigator.pushReplacement(
       context,
@@ -169,7 +171,8 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
           sessionScore: _score,
           script: widget.scriptText,
           sessionTitle: widget.sessionTitle,
-          originalSessionId: _sessionId,  // ← ADDED
+          originalSessionId: _sessionId,
+          recordingUrl: _recordingUrl,
         ),
       ),
     );
@@ -191,10 +194,11 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     return '$m:$s';
   }
 
+  // ── FIXED: Use AppConfig instead of hardcoded IP ─────
   Future<void> _playAudio() async {
     if (_audioPath == null) return;
     try {
-      final url = 'http://10.0.2.2:8000$_audioPath';
+      final url = AppConfig.mediaUrl(_audioPath)!;  // ← CHANGED
       await _player.setUrl(url);
       await _player.play();
     } catch (_) {}

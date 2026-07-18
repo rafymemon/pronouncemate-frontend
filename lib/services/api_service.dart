@@ -3,13 +3,15 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
+import '../config.dart';  // ← ADDED
 
 class ApiService {
-  // Android emulator → use 10.0.2.2 to reach your laptop
-  // Physical device → use your laptop's actual IP (e.g. 192.168.1.5)
-  // Find your IP: ipconfig (Windows) / ifconfig (Mac/Linux)
-  static const String ipAddress = "192.168.100.10:8000";
-  static const String baseUrl = "http://$ipAddress/api";
+  // REMOVED: hardcoded IP
+  // static const String ipAddress = "192.168.100.10:8000";
+  // static const String baseUrl = "http://$ipAddress/api";
+  
+  // ← ADDED: Use central config
+  static String get baseUrl => "${AppConfig.baseUrl}/api";
 
   // ── Token management ───────────────────────────────────
   static Future<String?> getToken() async {
@@ -184,8 +186,7 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
-  // Add inside ApiService class
-
+  // ── Dashboard ───────────────────────────────────────────
   static Future<Map<String, dynamic>> getDashboardSummary() async {
     try {
       final response = await http
@@ -205,17 +206,17 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> getProgressAnalytics() async {
-  try {
-    final response = await http.get(
-      Uri.parse('$baseUrl/analytics/'),
-      headers: await authHeaders,
-    ).timeout(const Duration(seconds: 15));
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body) as Map<String, dynamic>;
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/analytics/'),
+        headers: await authHeaders,
+      ).timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return {'error': 'Server error ${response.statusCode}'};
+    } catch (e) {
+      return {'error': e.toString()};
     }
-    return {'error': 'Server error ${response.statusCode}'};
-  } catch (e) {
-    return {'error': e.toString()};
   }
-}
 }

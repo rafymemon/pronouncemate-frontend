@@ -6,9 +6,13 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import '../models/practice_models.dart';
+import '../config.dart';  // ← ADDED
 
 class PracticeApiService {
-  static const String baseUrl = 'http://your-server:8000/api';
+  // REMOVED: static const String baseUrl = 'http://your-server:8000/api';
+  
+  // ← ADDED: Use shared config
+  static String get baseUrl => "${AppConfig.baseUrl}/api";
 
   /// Submit audio for main pronunciation evaluation
   static Future<Map<String, dynamic>> submitPronunciation(

@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import '../models/practice_models.dart';
 import '../services/practice_api_service.dart';
 import '../widgets/mistake_word_chip.dart';
-import '../services/recording_service.dart'; // Ensure this matches your file path!
+import '../services/recording_service.dart';
 
 class PracticeSessionScreen extends StatefulWidget {
   final List<MistakeWord> mistakeWords;
@@ -25,7 +25,6 @@ class PracticeSessionScreen extends StatefulWidget {
 }
 
 class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
-  // Initialize the recording service
   final RecordingService _rec = RecordingService();
   
   bool _isRecording = false;
@@ -39,7 +38,6 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
     _loadPracticeScript();
   }
 
-  // Properly dispose of the audio recorder to prevent memory leaks
   @override
   void dispose() {
     _rec.dispose();
@@ -81,9 +79,8 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
     }
   }
 
-  // Helper method to securely stop recording and trigger the upload
   Future<void> _stopAndSubmit() async {
-    if (!_isRecording) return; // Prevent double-firing
+    if (!_isRecording) return;
     
     setState(() => _isRecording = false);
     final file = await _rec.stop();
@@ -108,91 +105,94 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
     );
   }
 
+  // ── FIXED: Wrapped in SingleChildScrollView to prevent overflow ──
   Widget _buildPracticeView() {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (_practiceScript != null) ...[
-            const Text(
-              'Practice Script:',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(12),
+    return SingleChildScrollView(  // ← ADDED
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_practiceScript != null) ...[
+              const Text(
+                'Practice Script:',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              child: Text(
-                _practiceScript!,
-                style: const TextStyle(fontSize: 20, height: 1.5),
-              ),
-            ),
-          ],
-          const SizedBox(height: 24),
-          const Text(
-            'Words to Practice:',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: widget.mistakeWords.map((mw) => 
-              MistakeWordChip(
-                word: mw.word,
-                errorType: mw.errorType,
-                score: mw.perWordScore,
-              ),
-            ).toList(),
-          ),
-          const Spacer(),
-          Center(
-            child: GestureDetector(
-              onTapDown: (_) async {
-                // Check permissions before activating the mic
-                if (await _rec.hasPermission()) {
-                  await _rec.start();
-                  setState(() => _isRecording = true);
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Microphone permission required')),
-                  );
-                }
-              },
-              onTapUp: (_) => _stopAndSubmit(),
-              onTapCancel: () => _stopAndSubmit(), // Fires if finger slips off button
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: _isRecording ? 100 : 80,
-                height: _isRecording ? 100 : 80,
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: _isRecording ? Colors.red : Colors.deepOrange,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: (_isRecording ? Colors.red : Colors.deepOrange)
-                          .withOpacity(0.3),
-                      blurRadius: 20,
-                      spreadRadius: 5,
-                    ),
-                  ],
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  _isRecording ? Icons.stop : Icons.mic,
-                  color: Colors.white,
-                  size: 36,
+                child: Text(
+                  _practiceScript!,
+                  style: const TextStyle(fontSize: 20, height: 1.5),
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+            const Text(
+              'Words to Practice:',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: widget.mistakeWords.map((mw) => 
+                MistakeWordChip(
+                  word: mw.word,
+                  errorType: mw.errorType,
+                  score: mw.perWordScore,
+                ),
+              ).toList(),
+            ),
+            const SizedBox(height: 32),  // ← CHANGED: was const Spacer()
+            Center(
+              child: GestureDetector(
+                onTapDown: (_) async {
+                  if (await _rec.hasPermission()) {
+                    await _rec.start();
+                    setState(() => _isRecording = true);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Microphone permission required')),
+                    );
+                  }
+                },
+                onTapUp: (_) => _stopAndSubmit(),
+                onTapCancel: () => _stopAndSubmit(),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: _isRecording ? 100 : 80,
+                  height: _isRecording ? 100 : 80,
+                  decoration: BoxDecoration(
+                    color: _isRecording ? Colors.red : Colors.deepOrange,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: (_isRecording ? Colors.red : Colors.deepOrange)
+                            .withOpacity(0.3),
+                        blurRadius: 20,
+                        spreadRadius: 5,
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    _isRecording ? Icons.stop : Icons.mic,
+                    color: Colors.white,
+                    size: 36,
+                  ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 24),
-          if (_isProcessing)
-            const Center(child: CircularProgressIndicator()),
-        ],
+            const SizedBox(height: 24),
+            if (_isProcessing)
+              const Center(child: CircularProgressIndicator()),
+            const SizedBox(height: 24),  // ← ADDED: bottom padding for scroll
+          ],
+        ),
       ),
     );
   }

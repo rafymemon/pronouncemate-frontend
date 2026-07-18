@@ -5,13 +5,15 @@ import '../widgets/practice_mistake_button.dart';
 import '../providers/practice_provider.dart';
 import 'practice_session_screen.dart';
 import '../models/practice_models.dart';
+import '../config.dart';  // ← ADDED: central config
 
 class SessionSummaryScreen extends StatelessWidget {
   final List<WordResult> words;
   final double sessionScore;
   final String script;
   final String sessionTitle;
-  final String originalSessionId;  // ← ADDED
+  final String originalSessionId;
+  final String? recordingUrl;
 
   const SessionSummaryScreen({
     super.key,
@@ -19,7 +21,8 @@ class SessionSummaryScreen extends StatelessWidget {
     required this.sessionScore,
     required this.script,
     this.sessionTitle = 'Practice',
-    this.originalSessionId = '',    // ← ADDED
+    this.originalSessionId = '',
+    this.recordingUrl,
   });
 
   @override
@@ -111,6 +114,59 @@ class SessionSummaryScreen extends StatelessWidget {
 
             const SizedBox(height: 24),
 
+            // ── Recording Playback Card ───────────────────
+            if (recordingUrl != null && recordingUrl!.isNotEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("Hear Yourself",
+                        style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1A3A6B))),
+                    const SizedBox(height: 4),
+                    const Text("Compare your recording with the correct pronunciation",
+                        style: TextStyle(
+                            fontSize: 12, color: Color(0xFF94A3B8))),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _AudioPlayButton(
+                            label: "My Recording",
+                            icon: Icons.mic,
+                            audioUrl: AppConfig.mediaUrl(recordingUrl),  // ← USE CONFIG
+                            color: const Color(0xFF1A3A6B),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _AudioPlayButton(
+                            label: "Correct",
+                            icon: Icons.record_voice_over,
+                            audioUrl: errors.isNotEmpty
+                                ? AppConfig.mediaUrl(errors.first.audioPath)  // ← USE CONFIG
+                                : null,
+                            color: const Color(0xFF6B7C2A),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+            if (recordingUrl != null && recordingUrl!.isNotEmpty)
+              const SizedBox(height: 24),
+
             // ── Errors list ───────────────────────────────
             if (errors.isNotEmpty) ...[
               const Text("Errors Detected",
@@ -144,7 +200,7 @@ class SessionSummaryScreen extends StatelessWidget {
                                   color: Colors.red.shade700)),
                           const SizedBox(width: 4),
                           PronunciationAudioButton(
-                            audioUrl: _fullAudioUrl(e.audioPath),
+                            audioUrl: AppConfig.mediaUrl(e.audioPath),  // ← USE CONFIG
                           ),
                         ],
                       ),
@@ -243,11 +299,7 @@ class SessionSummaryScreen extends StatelessWidget {
     );
   }
 
-  String? _fullAudioUrl(String? path) {
-    if (path == null || path.isEmpty) return null;
-    if (path.startsWith('http')) return path;
-    return 'http://10.0.2.2:8000$path';
-  }
+  // REMOVED: old _fullAudioUrl() — now uses AppConfig.mediaUrl()
 
   Widget _scoreItem(String value, String label, Color color) {
     return Column(children: [
@@ -271,7 +323,6 @@ class SessionSummaryScreen extends StatelessWidget {
     return Colors.redAccent;
   }
 
-  // FIXED: Pass required params to PracticeSessionScreen
   void _startPracticeSession(BuildContext context, List<WordResult> errorWords) {
     final mistakeWords = errorWords.map((e) => MistakeWord(
       word: e.text,
@@ -299,7 +350,7 @@ class SessionSummaryScreen extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════
-// Self-contained audio button
+// Audio Playback Button — for error word TTS
 // ═══════════════════════════════════════════════════════════
 class PronunciationAudioButton extends StatefulWidget {
   final String? audioUrl;
@@ -381,6 +432,98 @@ class _PronunciationAudioButtonState extends State<PronunciationAudioButton> {
                 color: const Color(0xFF1A3A6B),
                 size: 18,
               ),
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Full-width audio play button for Recording Playback
+// ═══════════════════════════════════════════════════════════
+class _AudioPlayButton extends StatefulWidget {
+  final String label;
+  final IconData icon;
+  final String? audioUrl;
+  final Color color;
+
+  const _AudioPlayButton({
+    required this.label,
+    required this.icon,
+    this.audioUrl,
+    required this.color,
+  });
+
+  @override
+  State<_AudioPlayButton> createState() => _AudioPlayButtonState();
+}
+
+class _AudioPlayButtonState extends State<_AudioPlayButton> {
+  final AudioPlayer _player = AudioPlayer();
+  bool _isPlaying = false;
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _play() async {
+    if (widget.audioUrl == null || widget.audioUrl!.isEmpty) return;
+
+    try {
+      setState(() => _isLoading = true);
+      await _player.setUrl(widget.audioUrl!);
+      await _player.play();
+      setState(() {
+        _isLoading = false;
+        _isPlaying = true;
+      });
+
+      _player.playerStateStream.listen((state) {
+        if (state.processingState == ProcessingState.completed && mounted) {
+          setState(() => _isPlaying = false);
+        }
+      });
+    } catch (e) {
+      debugPrint('Playback error: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isPlaying = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool hasAudio = widget.audioUrl != null && widget.audioUrl!.isNotEmpty;
+
+    return ElevatedButton.icon(
+      onPressed: hasAudio && !_isLoading ? _play : null,
+      icon: _isLoading
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : Icon(
+              _isPlaying ? Icons.stop : widget.icon,
+              size: 18,
+            ),
+      label: Text(widget.label,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: widget.color,
+        foregroundColor: Colors.white,
+        disabledBackgroundColor: Colors.grey.shade300,
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
