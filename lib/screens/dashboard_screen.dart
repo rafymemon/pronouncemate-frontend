@@ -234,13 +234,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
+
   // ── Quick Stats ───────────────────────────────────────
   Widget _buildQuickStats() {
     final stats = [
       _StatItem('$_totalSessions', 'Sessions', Icons.play_circle_filled_rounded, AppColors.primary),
       _StatItem('${_quickStats['words'] ?? 0}', 'Words', Icons.text_fields_rounded, const Color(0xFF16A34A)),
       _StatItem('${_quickStats['errors_corrected'] ?? 0}', 'Fixed', Icons.check_circle_rounded, const Color(0xFF7C3AED)),
-      _StatItem('${_formatMinutes(_quickStats['minutes'] ?? 0)}', 'Time', Icons.timer_rounded, const Color(0xFF2563EB)),
+      _StatItem(_formatMinutes(_quickStats['minutes'] ?? 0), 'Time', Icons.timer_rounded, const Color(0xFF2563EB)),
     ];
 
     return GridView.count(
@@ -249,7 +250,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       crossAxisCount: 4,
       mainAxisSpacing: 8,
       crossAxisSpacing: 8,
-      childAspectRatio: 0.75,  // <-- CHANGED from 0.85 to 0.75 (taller cards)
+      childAspectRatio: 0.75, // Your aspect ratio change here was great!
       children: stats.map((s) => _statCard(s)).toList(),
     );
   }
@@ -262,32 +263,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
         border: Border.all(color: AppColors.divider),
       ),
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,  // <-- ADDED
-        children: [
-          Icon(stat.icon, color: stat.color, size: 20),  // <-- REDUCED from 22
-          const SizedBox(height: 6),  // <-- REDUCED from 8
-          FittedBox(  // <-- ADDED to prevent text overflow
-            fit: BoxFit.scaleDown,
-            child: Text(
+      // Wrapped the ENTIRE Column in FittedBox. This guarantees no overflows!
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(stat.icon, color: stat.color, size: 22), 
+            const SizedBox(height: 8),
+            Text(
               stat.value,
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: stat.color),  // <-- REDUCED from 16
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: stat.color),
               textAlign: TextAlign.center,
             ),
-          ),
-          const SizedBox(height: 2),
-          FittedBox(  // <-- ADDED
-            fit: BoxFit.scaleDown,
-            child: Text(
+            const SizedBox(height: 2),
+            Text(
               stat.label,
-              style: const TextStyle(fontSize: 9, color: AppColors.textSecondary),  // <-- REDUCED from 10
+              style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
+
   String _formatMinutes(int mins) {
     if (mins < 60) return '${mins}m';
     return '${(mins / 60).toStringAsFixed(1)}h';

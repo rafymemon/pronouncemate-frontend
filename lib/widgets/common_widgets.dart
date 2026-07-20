@@ -105,22 +105,28 @@ class StatCard extends StatelessWidget {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [BoxShadow(color: AppColors.cardShadow, blurRadius: 10, offset: Offset(0, 4))]),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(width: 34, height: 34,
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(9)),
-            child: Icon(icon, color: color, size: 18)),
-          const SizedBox(height: 8),
-          Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
-          const SizedBox(height: 2),
-          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-        ],
+      // 1. Wrap the Column in a FittedBox
+      child: FittedBox(
+        fit: BoxFit.scaleDown, // Shrinks the UI proportionally ONLY if it needs to
+        alignment: Alignment.centerLeft, // Keeps your left-aligned design intact
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          // 2. Tell the Column to only take up as much space as its children need
+          mainAxisSize: MainAxisSize.min, 
+          children: [
+            Container(width: 34, height: 34,
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(9)),
+              child: Icon(icon, color: color, size: 18)),
+            const SizedBox(height: 8),
+            Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+            const SizedBox(height: 2),
+            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          ],
+        ),
       ),
     );
   }
 }
-
 // ─── Input Field ───────────────────────────────────────────────
 class AppTextField extends StatefulWidget {
   final String label;

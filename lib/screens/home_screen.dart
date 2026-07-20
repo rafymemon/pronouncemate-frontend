@@ -527,7 +527,8 @@ class _SpeakerHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 195,
+      // Replaced fixed height with BoxConstraints to prevent vertical micro-overflows
+      constraints: const BoxConstraints(minHeight: 195), 
       width: double.infinity,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -544,75 +545,72 @@ class _SpeakerHero extends StatelessWidget {
           ),
         ],
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return Stack(
-            clipBehavior: Clip.hardEdge,
-            children: [
-              Positioned(
-                right: -35,
-                top: -35,
-                child: Container(
-                  width: 190,
-                  height: 190,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.08), width: 2),
-                  ),
-                ),
+      child: Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          Positioned(
+            right: -35,
+            top: -35,
+            child: Container(
+              width: 190,
+              height: 190,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.08), width: 2),
               ),
-              Positioned(
-                right: 8,
-                top: 8,
-                child: Container(
-                  width: 125,
-                  height: 125,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.1), width: 2),
-                  ),
-                ),
+            ),
+          ),
+          Positioned(
+            right: 8,
+            top: 8,
+            child: Container(
+              width: 125,
+              height: 125,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.1), width: 2),
               ),
-              Positioned(
-                right: 38,
-                top: 38,
-                child: Container(
-                  width: 65,
-                  height: 65,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.07),
-                    shape: BoxShape.circle,
-                  ),
-                ),
+            ),
+          ),
+          Positioned(
+            right: 38,
+            top: 38,
+            child: Container(
+              width: 65,
+              height: 65,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.07),
+                shape: BoxShape.circle,
               ),
-              Positioned(
-                left: -25,
-                bottom: -25,
-                child: Container(
-                  width: 110,
-                  height: 110,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.07), width: 2),
-                  ),
-                ),
+            ),
+          ),
+          Positioned(
+            left: -25,
+            bottom: -25,
+            child: Container(
+              width: 110,
+              height: 110,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.07), width: 2),
               ),
-              const Padding(
-                padding: EdgeInsets.all(22),
-                child: Row(
-                  children: [
-                    _SpeakerIllustration(),
-                    SizedBox(width: 20),
-                    Expanded(child: _SpeakerCopy()),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.all(22),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                _SpeakerIllustration(),
+                SizedBox(width: 20),
+                Expanded(child: _SpeakerCopy()),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -677,40 +675,44 @@ class _SpeakerCopy extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'AI Pronunciation\nCoach',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            height: 1.3,
+    // Wrapped in SingleChildScrollView to completely fix the 80-pixel overflow!
+    return const SingleChildScrollView(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min, // Ensures it only takes the space it needs
+        children: [
+          Text(
+            'AI Pronunciation\nCoach',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              height: 1.3,
+            ),
           ),
-        ),
-        SizedBox(height: 8),
-        Text(
-          'Real-time feedback on your English pronunciation, powered by advanced AI models.',
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: Colors.white70,
-            fontSize: 12,
-            height: 1.5,
+          SizedBox(height: 8),
+          Text(
+            'Real-time feedback on your English pronunciation, powered by advanced AI models.',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
+              height: 1.5,
+            ),
           ),
-        ),
-        SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _HeroPill('Real-time'),
-            _HeroPill('Accurate'),
-          ],
-        ),
-      ],
+          SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _HeroPill('Real-time'),
+              _HeroPill('Accurate'),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -776,8 +778,9 @@ class _RecentSession extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 44,
-            height: 44,
+            // Replaced fixed height/width with BoxConstraints to fix 5.7px micro-overflows
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
             decoration: BoxDecoration(
               color: _scoreColor.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),

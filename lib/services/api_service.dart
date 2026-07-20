@@ -100,14 +100,57 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
-  // ── User profile ────────────────────────────────────────
-  static Future<Map<String, dynamic>> getProfile() async {
+
+
+static Future<Map<String, dynamic>> getProfile() async {
+  try {
     final response = await http.get(
       Uri.parse('$baseUrl/profile/'),
       headers: await authHeaders,
-    );
-    return jsonDecode(response.body);
+    ).timeout(const Duration(seconds: 10));
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    return {'error': 'Server error ${response.statusCode}'};
+  } catch (e) {
+    return {'error': e.toString()};
   }
+}
+
+static Future<Map<String, dynamic>> updateProfile(
+    Map<String, dynamic> data) async {
+  try {
+    final response = await http.patch(
+      Uri.parse('$baseUrl/profile/'),
+      headers: await authHeaders,
+      body: jsonEncode(data),
+    ).timeout(const Duration(seconds: 10));
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    return {'error': 'Update failed ${response.statusCode}'};
+  } catch (e) {
+    return {'error': e.toString()};
+  }
+}
+
+static Future<Map<String, dynamic>> clearSessionHistory() async {
+  try {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/profile/'),
+      headers: await authHeaders,
+    ).timeout(const Duration(seconds: 10));
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    return {'error': 'Failed ${response.statusCode}'};
+  } catch (e) {
+    return {'error': e.toString()};
+  }
+}
 
   // ── Scripts ─────────────────────────────────────────────
   static Future<Map<String, dynamic>> getScripts({
