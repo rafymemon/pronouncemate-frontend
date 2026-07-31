@@ -75,7 +75,7 @@ class ApiService {
 
   // ── Core analyze endpoint ───────────────────────────────
   static Future<Map<String, dynamic>> analyzeAudio(
-      File audioFile, String scriptText) async {
+      File audioFile, String scriptText, {String? scriptId}) async {
     final token = await getToken();
     final request = http.MultipartRequest(
       'POST',
@@ -83,6 +83,12 @@ class ApiService {
     );
     request.headers['Authorization'] = 'Token $token';
     request.fields['script_text'] = scriptText;
+    
+    // ← ADDED: Send script_id if available
+    if (scriptId != null && scriptId.isNotEmpty) {
+      request.fields['script_id'] = scriptId;
+    }
+    
     request.files.add(
       await http.MultipartFile.fromPath('audio', audioFile.path),
     );
@@ -90,7 +96,7 @@ class ApiService {
     final response = await http.Response.fromStream(streamedResponse);
     return jsonDecode(response.body);
   }
-
+  
   // ── Session history ─────────────────────────────────────
   static Future<List<dynamic>> getSessions() async {
     final response = await http.get(

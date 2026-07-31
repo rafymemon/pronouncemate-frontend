@@ -2,21 +2,18 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart'; // Required for kIsWeb
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config.dart'; // ← ADDED: Import the AppConfig for dynamic base URL
 
 class AuthService {
   static final AuthService instance = AuthService._internal();
   AuthService._internal();
 
   // ── Dynamic Base URL ─────────────────────────────────────────────────────
-  // Automatically resolves network routing based on your current testing platform.
+  // Automatically pulls from our centralized AppConfig tunnel
   String get baseUrl {
-    if (kIsWeb) {
-      return 'http://127.0.0.1:8000/api'; 
-    } else {
-      // Replace 192.168.1.X with your actual Ubuntu IP address!
-      return 'http://192.168.100.10:8000/api'; 
-    }
+    return '${AppConfig.baseUrl}/api';
   }
+  
   // ── Session Management ───────────────────────────────────────────────────
   Future<void> _saveSession({required String token, required String username}) async {
     final prefs = await SharedPreferences.getInstance();
@@ -38,7 +35,7 @@ class AuthService {
 
   // ── Django Login ─────────────────────────────────────────────────────────
   Future<Map<String, dynamic>> signIn({required String username, required String password}) async {
-    final url = Uri.parse('$baseUrl/login/');
+    final url = Uri.parse('${AppConfig.baseUrl}/api/login/');
 
     try {
       final response = await http.post(
@@ -69,7 +66,7 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    final url = Uri.parse('$baseUrl/register/');
+    final url = Uri.parse('${AppConfig.baseUrl}/api/register/');
 
     try {
       final response = await http.post(
@@ -110,4 +107,5 @@ class AuthService {
   Future<void> signOut() async {
     await _clearSession();
   }
-}
+
+} // ← ADDED: Proper closing bracket for the AuthService class

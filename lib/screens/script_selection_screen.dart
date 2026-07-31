@@ -218,6 +218,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
     Navigator.push(context, MaterialPageRoute(
       builder: (_) => ActiveSessionScreen(
         scriptText: script['content'].toString(),
+        scriptId: script['id']?.toString(),
         sessionTitle: script['title'].toString(),
       ),
     ));

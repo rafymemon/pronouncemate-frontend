@@ -27,10 +27,12 @@ enum _SessionState { idle, recording, processing, done }
 class ActiveSessionScreen extends StatefulWidget {
   final String scriptText;
   final String sessionTitle;
+  final String? scriptId;
 
   const ActiveSessionScreen({
     Key? key,
     required this.scriptText,
+    this.scriptId,
     this.sessionTitle = 'Practice',
   }) : super(key: key);
 
@@ -39,6 +41,7 @@ class ActiveSessionScreen extends StatefulWidget {
 }
 
 class _ActiveSessionState extends State<ActiveSessionScreen> {
+  Map<String, dynamic> _sessionStats = {};
 
   static const _olive    = Color(0xFF6B7C2A);
   static const _bg       = Color(0xFFD6E9EB);
@@ -98,7 +101,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     });
   }
 
-  Future<void> _evaluate() async {
+    Future<void> _evaluate() async {
     _stopwatch.stop();
     final file = await _rec.stop();
     if (file == null) {
@@ -107,28 +110,44 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     setState(() => _state = _SessionState.processing);
 
     try {
-      final result = await ApiService.analyzeAudio(file, widget.scriptText);
+      final result = await ApiService.analyzeAudio(file, widget.scriptText, scriptId: widget.scriptId);
 
+      final stats    = (result['stats'] as Map?)?.cast<String, dynamic>() ?? {};
       final wordList = (result['words'] as List?) ?? [];
       final feedback = (result['feedback'] as List?) ?? [];
       final score    = (result['score'] as num?)?.toDouble() ?? 0.0;
       final grade    = result['grade']?.toString() ?? '';
 
-      final Map<String, dynamic> wordMap = {};
+      // ── FIX: Use backend stats for summary (guarantees correct + wrong = total)
+      final backendCorrect = (stats['correct_words'] as num?)?.toInt() ?? 0;
+      final backendWrong   = (stats['wrong_words'] as num?)?.toInt() ?? 0;
+      final backendTotal   = (stats['total_words'] as num?)?.toInt() ?? 0;
+      final wordAccuracy   = (stats['word_accuracy'] as num?)?.toDouble() ?? score;
+
+      // ── FIX: Handle duplicate words by consuming matches in order instead of Map overwrite
+      final Map<String, List<Map<String, dynamic>>> wordQueue = {};
       for (final w in wordList) {
-        wordMap[w['word'].toString().toLowerCase()] = w;
+        final key = w['word']?.toString().toLowerCase() ?? '';
+        if (key.isNotEmpty) {
+          wordQueue.putIfAbsent(key, () => []).add(w);
+        }
       }
 
       int correct = 0;
       for (final w in _words) {
-        final r = wordMap[w.text];
-        if (r == null) continue;
+        final queue = wordQueue[w.text];
+        if (queue == null || queue.isEmpty) {
+          w.status = WordStatus.error;
+          w.type = 'skipped';
+          continue;
+        }
+        final r = queue.removeAt(0); // consume first unmatched result
         final type = r['type']?.toString() ?? 'correct';
         w.status = type == 'correct' ? WordStatus.correct : WordStatus.error;
         w.type = type;
         if (type == 'correct') correct++;
         w.tip = r['explanation']?.toString();
-        w.score = (r['score'] as num?)?.toDouble();
+        w.score = (r['per_word_score'] as num?)?.toDouble();
         w.audioPath = r['audio_path']?.toString();
       }
 
@@ -143,6 +162,15 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       }
 
       _recordingUrl = result['recording_url']?.toString();
+      _sessionStats = {
+        'word_accuracy': wordAccuracy,
+        'correct_words': backendCorrect,
+        'wrong_words': backendWrong,
+        'total_words': backendTotal,
+        'score': score,
+        'grade': grade,
+        'mistake_summary': result['mistake_summary'],
+      };
 
       setState(() {
         _state           = _SessionState.done;
@@ -162,13 +190,18 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     }
   }
 
-  void _navigateToSummary() {
+    void _navigateToSummary() {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (_) => SessionSummaryScreen(
           words: _words,
           sessionScore: _score,
+          wordAccuracy: (_sessionStats['word_accuracy'] as num?)?.toDouble() ?? _score,
+          correctWords: (_sessionStats['correct_words'] as num?)?.toInt(),
+          wrongWords: (_sessionStats['wrong_words'] as num?)?.toInt(),
+          totalWords: (_sessionStats['total_words'] as num?)?.toInt(),
+          stats: _sessionStats,
           script: widget.scriptText,
           sessionTitle: widget.sessionTitle,
           originalSessionId: _sessionId,
@@ -177,7 +210,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       ),
     );
   }
-
   void _startTimer() {
     Future.doWhile(() async {
       await Future.delayed(const Duration(seconds: 1));

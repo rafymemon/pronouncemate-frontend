@@ -25,7 +25,8 @@ class UserProgressSummary {
     required this.recentSessions,
   });
 
-  double get goalProgress => goalTarget == 0 ? 0 : todaySessions / goalTarget;
+  // 👇 FIXED: Added clamp to prevent UI crashes if the user exceeds their daily goal (e.g. 3/2 sessions = 1.5)
+  double get goalProgress => (goalTarget == 0 ? 0.0 : todaySessions / goalTarget).clamp(0.0, 1.0);
 }
 
 class SessionSnapshot {
@@ -272,13 +273,14 @@ class UserProgressService extends ChangeNotifier {
     return foundAny ? total : null;
   }
 
-  static String _formatDuration(Map<String, dynamic> session) {
+  // 👇 FIXED: Changed return type to String? and removed literal 'null.toString()'
+  static String? _formatDuration(Map<String, dynamic> session) {
     final direct = _readString(session, const ['duration', 'duration_label']);
     if (direct != null) return direct;
 
     final seconds =
         _readInt(session, const ['duration_seconds', 'elapsed_seconds']);
-    if (seconds == null || seconds <= 0) return null.toString();
+    if (seconds == null || seconds <= 0) return null;
 
     final minutes = seconds ~/ 60;
     if (minutes == 0) return '${seconds}s';

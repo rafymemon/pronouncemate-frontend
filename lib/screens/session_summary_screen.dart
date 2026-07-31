@@ -5,7 +5,7 @@ import '../widgets/practice_mistake_button.dart';
 import '../providers/practice_provider.dart';
 import 'practice_session_screen.dart';
 import '../models/practice_models.dart';
-import '../config.dart';  // ← ADDED: central config
+import '../config.dart';
 
 class SessionSummaryScreen extends StatelessWidget {
   final List<WordResult> words;
@@ -15,6 +15,13 @@ class SessionSummaryScreen extends StatelessWidget {
   final String originalSessionId;
   final String? recordingUrl;
 
+  // ── NEW: official backend stats ──
+  final double? wordAccuracy;
+  final int? correctWords;
+  final int? wrongWords;
+  final int? totalWords;
+  final Map<String, dynamic>? stats;
+
   const SessionSummaryScreen({
     super.key,
     required this.words,
@@ -23,14 +30,24 @@ class SessionSummaryScreen extends StatelessWidget {
     this.sessionTitle = 'Practice',
     this.originalSessionId = '',
     this.recordingUrl,
+    this.wordAccuracy,
+    this.correctWords,
+    this.wrongWords,
+    this.totalWords,
+    this.stats,
   });
 
   @override
   Widget build(BuildContext context) {
-    final correct  = words.where((w) => w.status == WordStatus.correct).length;
-    final errors   = words.where((w) => w.status == WordStatus.error).toList();
-    final grade    = _getGrade(sessionScore);
-    final gradeColor = _gradeColor(sessionScore);
+    // ── FIX: Use backend stats when available, otherwise fall back to local ──
+    final correctCount = correctWords ?? words.where((w) => w.status == WordStatus.correct).length;
+    final errorCount   = wrongWords   ?? words.where((w) => w.status == WordStatus.error).length;
+    final totalCount   = totalWords   ?? words.length;
+    final displayScore = wordAccuracy ?? sessionScore;
+    final grade        = _getGrade(displayScore);
+    final gradeColor   = _gradeColor(displayScore);
+
+    final errors = words.where((w) => w.status == WordStatus.error).toList();
 
     // Build severity breakdown from error types
     final severityBreakdown = <String, int>{};
@@ -59,13 +76,21 @@ class SessionSummaryScreen extends StatelessWidget {
       'audio_path': e.audioPath,
     }).toList();
 
+    // Prefer backend mistake_summary if we have it
+    final backendMistakeSummary = stats?['mistake_summary'] as Map<String, dynamic>?;
     final mistakeSummary = MistakeSummary(
-      mistakeCount: errors.length,
-      offerPractice: errors.isNotEmpty,
-      severityBreakdown: severityBreakdown,
-      mostCommonError: mostCommonError,
-      words: errors.map((e) => e.text).toList(),
-      topMistakes: topMistakes,
+      mistakeCount: backendMistakeSummary?['mistake_count'] ?? errors.length,
+      offerPractice: backendMistakeSummary?['offer_practice'] ?? errors.isNotEmpty,
+      severityBreakdown: Map<String, int>.from(
+        backendMistakeSummary?['severity_breakdown'] ?? severityBreakdown
+      ),
+      mostCommonError: backendMistakeSummary?['most_common_error'] ?? mostCommonError,
+      words: List<String>.from(
+        backendMistakeSummary?['words'] ?? errors.map((e) => e.text).toList()
+      ),
+      topMistakes: List<Map<String, dynamic>>.from(
+        backendMistakeSummary?['top_mistakes'] ?? topMistakes
+      ),
     );
 
     return Scaffold(
@@ -96,7 +121,7 @@ class SessionSummaryScreen extends StatelessWidget {
                         fontSize: 52, fontWeight: FontWeight.bold,
                         color: gradeColor)),
                 const SizedBox(height: 4),
-                Text("${sessionScore.toStringAsFixed(1)}%",
+                Text("${displayScore.toStringAsFixed(1)}%",
                     style: const TextStyle(
                         fontSize: 28, color: Colors.white,
                         fontWeight: FontWeight.w600)),
@@ -104,9 +129,9 @@ class SessionSummaryScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _scoreItem("✓  $correct", "Correct", Colors.greenAccent),
-                    _scoreItem("✗  ${errors.length}", "Errors", Colors.redAccent),
-                    _scoreItem("${words.length}", "Total", Colors.white70),
+                    _scoreItem("✓  $correctCount", "Correct", Colors.greenAccent),
+                    _scoreItem("✗  $errorCount", "Errors", Colors.redAccent),
+                    _scoreItem("$totalCount", "Total", Colors.white70),
                   ],
                 ),
               ]),
@@ -143,7 +168,7 @@ class SessionSummaryScreen extends StatelessWidget {
                           child: _AudioPlayButton(
                             label: "My Recording",
                             icon: Icons.mic,
-                            audioUrl: AppConfig.mediaUrl(recordingUrl),  // ← USE CONFIG
+                            audioUrl: AppConfig.mediaUrl(recordingUrl),
                             color: const Color(0xFF1A3A6B),
                           ),
                         ),
@@ -153,7 +178,7 @@ class SessionSummaryScreen extends StatelessWidget {
                             label: "Correct",
                             icon: Icons.record_voice_over,
                             audioUrl: errors.isNotEmpty
-                                ? AppConfig.mediaUrl(errors.first.audioPath)  // ← USE CONFIG
+                                ? AppConfig.mediaUrl(errors.first.audioPath)
                                 : null,
                             color: const Color(0xFF6B7C2A),
                           ),
@@ -200,7 +225,7 @@ class SessionSummaryScreen extends StatelessWidget {
                                   color: Colors.red.shade700)),
                           const SizedBox(width: 4),
                           PronunciationAudioButton(
-                            audioUrl: AppConfig.mediaUrl(e.audioPath),  // ← USE CONFIG
+                            audioUrl: AppConfig.mediaUrl(e.audioPath),
                           ),
                         ],
                       ),
@@ -298,8 +323,6 @@ class SessionSummaryScreen extends StatelessWidget {
       ),
     );
   }
-
-  // REMOVED: old _fullAudioUrl() — now uses AppConfig.mediaUrl()
 
   Widget _scoreItem(String value, String label, Color color) {
     return Column(children: [
