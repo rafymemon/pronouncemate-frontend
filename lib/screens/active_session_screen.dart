@@ -1,12 +1,12 @@
 // lib/screens/active_session_screen.dart
 
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import '../theme/app_theme.dart';
 import '../services/recording_service.dart';
 import '../services/api_service.dart';
-import '../config.dart';  // ← ADDED
+import '../config.dart'; // ← ADDED
 import 'session_summary_screen.dart';
 
 enum WordStatus { pending, correct, error }
@@ -43,25 +43,23 @@ class ActiveSessionScreen extends StatefulWidget {
 class _ActiveSessionState extends State<ActiveSessionScreen> {
   Map<String, dynamic> _sessionStats = {};
 
-  static const _olive    = Color(0xFF6B7C2A);
-  static const _bg       = Color(0xFFD6E9EB);
-  static const _cardBg   = Color(0xFFFFFFFF);
-  static const _textDark = Color(0xFF1A2A1A);
-  static const _textGrey = Color(0xFF6B7B7B);
+  static const _olive = AppColors.brandOlive;
+  static const _bg = AppColors.sessionBackground;
+  static const _cardBg = AppColors.surface;
+  static const _textDark = AppColors.textPrimary;
+  static const _textGrey = AppColors.textSecondary;
 
-  final RecordingService _rec    = RecordingService();
-  final AudioPlayer      _player = AudioPlayer();
+  final RecordingService _rec = RecordingService();
+  final AudioPlayer _player = AudioPlayer();
 
-  _SessionState _state    = _SessionState.idle;
+  _SessionState _state = _SessionState.idle;
   late List<WordResult> _words;
-  int      _correctCount  = 0;
-  double   _score         = 0;
-  String   _grade         = '';
-  String?  _latestFeedback;
-  String?  _latestFeedbackWord;
-  String?  _audioPath;
-  String?  _recordingUrl;
-  Duration _elapsed        = Duration.zero;
+  int _correctCount = 0;
+  double _score = 0;
+  String? _latestFeedback;
+  String? _audioPath;
+  String? _recordingUrl;
+  Duration _elapsed = Duration.zero;
   late Stopwatch _stopwatch;
   late String _sessionId;
 
@@ -73,27 +71,28 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     _words = widget.scriptText
         .split(RegExp(r'\s+'))
         .where((w) => w.trim().isNotEmpty)
-        .map((w) => WordResult(w.replaceAll(RegExp(r"[^\w']"), '').toLowerCase()))
+        .map((w) =>
+            WordResult(w.replaceAll(RegExp(r"[^\w']"), '').toLowerCase()))
         .toList();
   }
 
   Future<void> _startRecording() async {
     final ok = await _rec.hasPermission();
     if (!ok) {
-      _snack('Microphone permission required', error: true); return;
+      _snack('Microphone permission required', error: true);
+      return;
     }
     await _rec.start();
     _stopwatch.reset();
     _stopwatch.start();
     _startTimer();
     setState(() {
-      _state           = _SessionState.recording;
-      _latestFeedback  = null;
-      _audioPath       = null;
-      _recordingUrl    = null;
-      _correctCount    = 0;
-      _score           = 0;
-      _grade           = '';
+      _state = _SessionState.recording;
+      _latestFeedback = null;
+      _audioPath = null;
+      _recordingUrl = null;
+      _correctCount = 0;
+      _score = 0;
       for (final w in _words) {
         w.status = WordStatus.pending;
         w.audioPath = null;
@@ -101,28 +100,31 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     });
   }
 
-    Future<void> _evaluate() async {
+  Future<void> _evaluate() async {
     _stopwatch.stop();
     final file = await _rec.stop();
     if (file == null) {
-      _snack('Recording failed', error: true); return;
+      _snack('Recording failed', error: true);
+      return;
     }
     setState(() => _state = _SessionState.processing);
 
     try {
-      final result = await ApiService.analyzeAudio(file, widget.scriptText, scriptId: widget.scriptId);
+      final result = await ApiService.analyzeAudio(file, widget.scriptText,
+          scriptId: widget.scriptId);
 
-      final stats    = (result['stats'] as Map?)?.cast<String, dynamic>() ?? {};
+      final stats = (result['stats'] as Map?)?.cast<String, dynamic>() ?? {};
       final wordList = (result['words'] as List?) ?? [];
       final feedback = (result['feedback'] as List?) ?? [];
-      final score    = (result['score'] as num?)?.toDouble() ?? 0.0;
-      final grade    = result['grade']?.toString() ?? '';
+      final score = (result['score'] as num?)?.toDouble() ?? 0.0;
+      final grade = result['grade']?.toString() ?? '';
 
       // ── FIX: Use backend stats for summary (guarantees correct + wrong = total)
       final backendCorrect = (stats['correct_words'] as num?)?.toInt() ?? 0;
-      final backendWrong   = (stats['wrong_words'] as num?)?.toInt() ?? 0;
-      final backendTotal   = (stats['total_words'] as num?)?.toInt() ?? 0;
-      final wordAccuracy   = (stats['word_accuracy'] as num?)?.toDouble() ?? score;
+      final backendWrong = (stats['wrong_words'] as num?)?.toInt() ?? 0;
+      final backendTotal = (stats['total_words'] as num?)?.toInt() ?? 0;
+      final wordAccuracy =
+          (stats['word_accuracy'] as num?)?.toDouble() ?? score;
 
       // ── FIX: Handle duplicate words by consuming matches in order instead of Map overwrite
       final Map<String, List<Map<String, dynamic>>> wordQueue = {};
@@ -152,12 +154,10 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       }
 
       String? fbText;
-      String? fbWord;
       String? fbAudio;
       if (feedback.isNotEmpty) {
         final f = feedback.first;
-        fbWord  = f['word']?.toString();
-        fbText  = f['explanation']?.toString();
+        fbText = f['explanation']?.toString();
         fbAudio = f['audio_path']?.toString();
       }
 
@@ -173,31 +173,29 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       };
 
       setState(() {
-        _state           = _SessionState.done;
-        _score           = score;
-        _grade           = grade;
-        _correctCount    = correct;
-        _latestFeedback  = fbText;
-        _latestFeedbackWord = fbWord;
-        _audioPath       = fbAudio;
+        _state = _SessionState.done;
+        _score = score;
+        _correctCount = correct;
+        _latestFeedback = fbText;
+        _audioPath = fbAudio;
       });
 
       _navigateToSummary();
-
     } catch (e) {
       setState(() => _state = _SessionState.idle);
       _snack('Analysis failed. Try again.', error: true);
     }
   }
 
-    void _navigateToSummary() {
+  void _navigateToSummary() {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (_) => SessionSummaryScreen(
           words: _words,
           sessionScore: _score,
-          wordAccuracy: (_sessionStats['word_accuracy'] as num?)?.toDouble() ?? _score,
+          wordAccuracy:
+              (_sessionStats['word_accuracy'] as num?)?.toDouble() ?? _score,
           correctWords: (_sessionStats['correct_words'] as num?)?.toInt(),
           wrongWords: (_sessionStats['wrong_words'] as num?)?.toInt(),
           totalWords: (_sessionStats['total_words'] as num?)?.toInt(),
@@ -210,6 +208,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       ),
     );
   }
+
   void _startTimer() {
     Future.doWhile(() async {
       await Future.delayed(const Duration(seconds: 1));
@@ -230,7 +229,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
   Future<void> _playAudio() async {
     if (_audioPath == null) return;
     try {
-      final url = AppConfig.mediaUrl(_audioPath)!;  // ← CHANGED
+      final url = AppConfig.mediaUrl(_audioPath)!; // ← CHANGED
       await _player.setUrl(url);
       await _player.play();
     } catch (_) {}
@@ -252,17 +251,23 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
 
   Color _wordBg(WordStatus s) {
     switch (s) {
-      case WordStatus.correct: return const Color(0xFFD4EDDA);
-      case WordStatus.error:   return const Color(0xFFFFE0E0);
-      case WordStatus.pending: return Colors.transparent;
+      case WordStatus.correct:
+        return const Color(0xFFD4EDDA);
+      case WordStatus.error:
+        return const Color(0xFFFFE0E0);
+      case WordStatus.pending:
+        return Colors.transparent;
     }
   }
 
   Color _wordText(WordStatus s) {
     switch (s) {
-      case WordStatus.correct: return const Color(0xFF2E7D32);
-      case WordStatus.error:   return const Color(0xFFC62828);
-      case WordStatus.pending: return _textDark;
+      case WordStatus.correct:
+        return const Color(0xFF2E7D32);
+      case WordStatus.error:
+        return const Color(0xFFC62828);
+      case WordStatus.pending:
+        return _textDark;
     }
   }
 
@@ -273,38 +278,34 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       appBar: AppBar(
         title: Text(widget.sessionTitle,
             style: const TextStyle(
-                color: _textDark, fontWeight: FontWeight.bold,
-                fontSize: 17)),
+                color: _textDark, fontWeight: FontWeight.bold, fontSize: 17)),
         backgroundColor: _bg,
         elevation: 0,
         iconTheme: const IconThemeData(color: _textDark),
         actions: [
-          if (_state == _SessionState.recording ||
-              _state == _SessionState.done)
+          if (_state == _SessionState.recording || _state == _SessionState.done)
             TextButton.icon(
               onPressed: _end,
               icon: Icon(
                 _state == _SessionState.recording
                     ? Icons.stop_circle_outlined
                     : Icons.close_rounded,
-                color: Colors.red.shade400, size: 18,
+                color: Colors.red.shade400,
+                size: 18,
               ),
               label: Text(
                 _state == _SessionState.recording ? 'End' : 'Close',
-                style: TextStyle(color: Colors.red.shade400,
-                    fontWeight: FontWeight.w600),
+                style: TextStyle(
+                    color: Colors.red.shade400, fontWeight: FontWeight.w600),
               ),
             ),
         ],
       ),
       body: Column(children: [
-
-        if (_state == _SessionState.recording ||
-            _state == _SessionState.done)
+        if (_state == _SessionState.recording || _state == _SessionState.done)
           Container(
             margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            padding: const EdgeInsets.symmetric(
-                horizontal: 20, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             decoration: BoxDecoration(
               color: _cardBg,
               borderRadius: BorderRadius.circular(14),
@@ -312,14 +313,14 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _statItem(Icons.timer_outlined,
-                    _timerStr, const Color(0xFF2196F3)),
+                _statItem(
+                    Icons.timer_outlined, _timerStr, const Color(0xFF2196F3)),
                 _statDivider(),
                 _statItem(Icons.text_fields_rounded,
-                    '${_correctCount} / ${_words.length} words',
-                    _olive),
+                    '${_correctCount} / ${_words.length} words', _olive),
                 _statDivider(),
-                _statItem(Icons.analytics_outlined,
+                _statItem(
+                    Icons.analytics_outlined,
                     _state == _SessionState.done
                         ? '${_score.toStringAsFixed(0)}%'
                         : '--',
@@ -327,7 +328,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
               ],
             ),
           ),
-
         Expanded(
           child: Container(
             margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -341,10 +341,10 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
               children: [
                 Text(widget.sessionTitle,
                     style: const TextStyle(
-                        fontSize: 17, fontWeight: FontWeight.bold,
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
                         color: _textDark)),
                 const Divider(height: 20),
-
                 Expanded(
                   child: SingleChildScrollView(
                     child: _buildScriptText(),
@@ -354,12 +354,10 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
             ),
           ),
         ),
-
         if (_latestFeedback != null)
           Container(
             margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            padding: const EdgeInsets.symmetric(
-                horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: const Color(0xFFFFEEEE),
               borderRadius: BorderRadius.circular(14),
@@ -373,23 +371,22 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
                 child: Text(
                   _latestFeedback!,
                   style: TextStyle(
-                      fontSize: 13, color: Colors.red.shade700,
-                      fontWeight: FontWeight.w500, height: 1.4),
+                      fontSize: 13,
+                      color: Colors.red.shade700,
+                      fontWeight: FontWeight.w500,
+                      height: 1.4),
                 ),
               ),
               if (_audioPath != null)
                 IconButton(
-                  icon: Icon(Icons.volume_up_rounded,
-                      color: _olive, size: 22),
+                  icon: Icon(Icons.volume_up_rounded, color: _olive, size: 22),
                   onPressed: _playAudio,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                 ),
             ]),
           ),
-
         _buildBottomBar(),
-
         const SizedBox(height: 16),
       ]),
     );
@@ -405,14 +402,14 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
               onTap: hasTip ? () => _showWordTip(w) : null,
               child: Container(
                 margin: const EdgeInsets.only(right: 6, bottom: 6),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 6, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                 decoration: BoxDecoration(
                   color: _wordBg(w.status),
                   borderRadius: BorderRadius.circular(6),
                   border: w.status == WordStatus.error
-                      ? Border(bottom: BorderSide(
-                          color: Colors.red.shade400, width: 2))
+                      ? Border(
+                          bottom:
+                              BorderSide(color: Colors.red.shade400, width: 2))
                       : null,
                 ),
                 child: Text(w.text,
@@ -438,32 +435,36 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => Padding(
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
-        child: Column(mainAxisSize: MainAxisSize.min,
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-          Container(width: 40, height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2))),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.red.shade50,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(w.text,
-                style: TextStyle(fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.red.shade700)),
-          ),
-          const SizedBox(height: 14),
-          Text(w.tip ?? '',
-              style: const TextStyle(fontSize: 15,
-                  color: _textGrey, height: 1.55)),
-          const SizedBox(height: 20),
-        ]),
+              Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 16),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(w.text,
+                    style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red.shade700)),
+              ),
+              const SizedBox(height: 14),
+              Text(w.tip ?? '',
+                  style: const TextStyle(
+                      fontSize: 15, color: _textGrey, height: 1.55)),
+              const SizedBox(height: 20),
+            ]),
       ),
     );
   }
@@ -472,7 +473,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(children: [
-
         if (_state == _SessionState.idle) ...[
           Expanded(
             child: _btn(
@@ -483,7 +483,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
             ),
           ),
         ],
-
         if (_state == _SessionState.recording) ...[
           Expanded(
             flex: 1,
@@ -493,8 +492,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
                   color: Colors.red.shade400, size: 18),
               label: Text('End',
                   style: TextStyle(
-                      color: Colors.red.shade400,
-                      fontWeight: FontWeight.w600)),
+                      color: Colors.red.shade400, fontWeight: FontWeight.w600)),
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 side: BorderSide(color: Colors.red.shade300),
@@ -514,15 +512,14 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
             ),
           ),
         ],
-
         if (_state == _SessionState.processing)
-          Expanded(child: _btn(
+          Expanded(
+              child: _btn(
             label: 'Analyzing...',
             icon: Icons.hourglass_empty,
             color: Colors.grey.shade400,
             onTap: null,
           )),
-
         if (_state == _SessionState.done) ...[
           Expanded(
             child: OutlinedButton.icon(
@@ -553,25 +550,23 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
   }
 
   Widget _btn({
-    required String   label,
+    required String label,
     required IconData icon,
-    required Color    color,
+    required Color color,
     required VoidCallback? onTap,
   }) {
     return ElevatedButton.icon(
       onPressed: onTap,
       icon: Icon(icon, size: 18),
       label: Text(label,
-          style: const TextStyle(
-              fontSize: 15, fontWeight: FontWeight.w600)),
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
       style: ElevatedButton.styleFrom(
         backgroundColor: color,
         foregroundColor: Colors.white,
         disabledBackgroundColor: Colors.grey.shade300,
         elevation: 0,
         padding: const EdgeInsets.symmetric(vertical: 14),
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
@@ -581,14 +576,13 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       Icon(icon, size: 16, color: color),
       const SizedBox(width: 6),
       Text(label,
-          style: TextStyle(fontSize: 13,
-              fontWeight: FontWeight.w600, color: color)),
+          style: TextStyle(
+              fontSize: 13, fontWeight: FontWeight.w600, color: color)),
     ]);
   }
 
   Widget _statDivider() {
-    return Container(
-        width: 1, height: 20, color: Colors.grey.shade200);
+    return Container(width: 1, height: 20, color: Colors.grey.shade200);
   }
 
   @override

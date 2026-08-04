@@ -3,6 +3,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import '../theme/app_theme.dart';
 import '../services/api_service.dart';
 import 'active_session_screen.dart';
 
@@ -12,7 +13,8 @@ import 'active_session_screen.dart';
 
 enum ScriptMode {
   publicSpeaking('public_speaking', 'Public Speaking', Icons.record_voice_over),
-  dailyConversation('daily_conversation', 'Daily Conversation', Icons.chat_bubble_outline),
+  dailyConversation(
+      'daily_conversation', 'Daily Conversation', Icons.chat_bubble_outline),
   scriptBased('script_based', 'Script-Based', Icons.article_outlined);
 
   final String value;
@@ -24,12 +26,16 @@ enum ScriptMode {
       values.firstWhere((e) => e.value == v, orElse: () => scriptBased);
 }
 
+// Proficiency badge colors now progress through the app's actual theme
+// palette (teal accent -> olive primary) instead of arbitrary
+// green/amber/orange/purple/blue that didn't match the Figma design.
 enum ProficiencyLevel {
-  beginner('beginner', 'Beginner', Color(0xFF16A34A)),
-  intermediate('intermediate', 'Intermediate', Color(0xFFD97706)),
-  upperIntermediate('upper_intermediate', 'Upper Intermediate', Color(0xFFEA580C)),
-  advanced('advanced', 'Advanced', Color(0xFF7C3AED)),
-  fluent('fluent', 'Fluent', Color(0xFF2563EB));
+  beginner('beginner', 'Beginner', AppColors.accentLight),
+  intermediate('intermediate', 'Intermediate', AppColors.accent),
+  upperIntermediate(
+      'upper_intermediate', 'Upper Intermediate', AppColors.primaryLight),
+  advanced('advanced', 'Advanced', AppColors.primary),
+  fluent('fluent', 'Fluent', AppColors.primaryDark);
 
   final String value;
   final String label;
@@ -71,15 +77,15 @@ class ScriptSelectionScreen extends StatefulWidget {
 
 class _ScriptSelectionState extends State<ScriptSelectionScreen>
     with SingleTickerProviderStateMixin {
-
   // ── Colors ────────────────────────────────────────────
-  static const _primary    = Color(0xFF1A3A6B);
-  static const _olive      = Color(0xFF6B7C2A);
-  static const _bg         = Color(0xFFF8FAFC);
-  static const _cardBg     = Color(0xFFFFFFFF);
-  static const _textDark   = Color(0xFF1E293B);
-  static const _textGrey   = Color(0xFF64748B);
-  static const _border     = Color(0xFFE2E8F0);
+  // Was AppColors.brandBlue — a leftover color that didn't match the
+  // app's actual olive/teal Figma theme. Now uses the real theme primary.
+  static const _primary = AppColors.primary;
+  static const _bg = AppColors.screenBackground;
+  static const _cardBg = AppColors.surface;
+  static const _textDark = AppColors.textPrimary;
+  static const _textGrey = AppColors.textSecondary;
+  static const _border = AppColors.softBorder;
 
   // ── State ─────────────────────────────────────────────
   late TabController _tabs;
@@ -89,6 +95,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
 
   ScriptMode? _selectedMode;
   ProficiencyLevel? _selectedLevel;
+
+  bool get _isScriptBasedMode => _selectedMode == ScriptMode.scriptBased;
 
   // Data
   bool _loading = true;
@@ -166,10 +174,12 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
     setState(() {
       _loading = false;
       _builtinScripts = List<Map<String, dynamic>>.from(
-        (data['builtin'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)),
+        (data['builtin'] as List? ?? [])
+            .map((e) => Map<String, dynamic>.from(e)),
       );
       _uploadedScripts = List<Map<String, dynamic>>.from(
-        (data['uploaded'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)),
+        (data['uploaded'] as List? ?? [])
+            .map((e) => Map<String, dynamic>.from(e)),
       );
     });
   }
@@ -191,6 +201,13 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
   }
 
   void _goBack() {
+    if (_currentStep == 2 &&
+        widget.preselectedMode != null &&
+        widget.preselectedLevel != null) {
+      Navigator.pop(context);
+      return;
+    }
+
     if (_currentStep > 0) {
       setState(() => _currentStep--);
       if (_currentStep == 0) {
@@ -215,13 +232,15 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
 
   // ── Start Practice ──────────────────────────────────
   void _startScript(Map<String, dynamic> script) {
-    Navigator.push(context, MaterialPageRoute(
-      builder: (_) => ActiveSessionScreen(
-        scriptText: script['content'].toString(),
-        scriptId: script['id']?.toString(),
-        sessionTitle: script['title'].toString(),
-      ),
-    ));
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ActiveSessionScreen(
+            scriptText: script['content'].toString(),
+            scriptId: script['id']?.toString(),
+            sessionTitle: script['title'].toString(),
+          ),
+        ));
   }
 
   // ── Upload: Text ────────────────────────────────────
@@ -230,10 +249,12 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
     final content = _contentCtrl.text.trim();
 
     if (title.isEmpty) {
-      _showError('Please enter a title'); return;
+      _showError('Please enter a title');
+      return;
     }
     if (content.split(' ').length < 5) {
-      _showError('Script must contain at least 5 words'); return;
+      _showError('Script must contain at least 5 words');
+      return;
     }
 
     Navigator.pop(context);
@@ -270,7 +291,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
         allowMultiple: false,
       );
     } catch (e) {
-      _showError('File picker error: $e'); return;
+      _showError('File picker error: $e');
+      return;
     }
 
     if (result == null || result.files.isEmpty) return;
@@ -316,15 +338,15 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
           title: const Text('Select Difficulty Level'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
-            children: ProficiencyLevel.values.map((l) =>
-              RadioListTile<String>(
-                title: Text(l.label),
-                value: l.value,
-                groupValue: selected,
-                activeColor: _primary,
-                onChanged: (v) => setLocal(() => selected = v!),
-              )
-            ).toList(),
+            children: ProficiencyLevel.values
+                .map((l) => RadioListTile<String>(
+                      title: Text(l.label),
+                      value: l.value,
+                      groupValue: selected,
+                      activeColor: _primary,
+                      onChanged: (v) => setLocal(() => selected = v!),
+                    ))
+                .toList(),
           ),
           actions: [
             TextButton(
@@ -334,7 +356,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: _primary),
               onPressed: () => Navigator.pop(ctx, selected),
-              child: const Text('Confirm', style: TextStyle(color: Colors.white)),
+              child:
+                  const Text('Confirm', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -371,7 +394,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                   TextField(
                     controller: _contentCtrl,
                     maxLines: 6,
-                    decoration: _inputDecoration('Paste or type your script here...'),
+                    decoration:
+                        _inputDecoration('Paste or type your script here...'),
                   ),
                   const SizedBox(height: 16),
                   _dialogLabel('Difficulty Level'),
@@ -379,9 +403,10 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                   DropdownButtonFormField<String>(
                     value: _uploadLevel,
                     decoration: _inputDecoration(''),
-                    items: ProficiencyLevel.values.map((l) =>
-                      DropdownMenuItem(value: l.value, child: Text(l.label))
-                    ).toList(),
+                    items: ProficiencyLevel.values
+                        .map((l) => DropdownMenuItem(
+                            value: l.value, child: Text(l.label)))
+                        .toList(),
                     onChanged: (v) => setLocal(() => _uploadLevel = v!),
                   ),
                   if (_selectedMode != null) ...[
@@ -389,11 +414,13 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                     _dialogLabel('Mode'),
                     const SizedBox(height: 6),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
                       decoration: BoxDecoration(
                         color: _primary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: _primary.withValues(alpha: 0.3)),
+                        border:
+                            Border.all(color: _primary.withValues(alpha: 0.3)),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -401,7 +428,9 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                           Icon(_selectedMode!.icon, size: 16, color: _primary),
                           const SizedBox(width: 8),
                           Text(_selectedMode!.label,
-                              style: const TextStyle(color: _primary, fontWeight: FontWeight.w600)),
+                              style: const TextStyle(
+                                  color: _primary,
+                                  fontWeight: FontWeight.w600)),
                         ],
                       ),
                     ),
@@ -413,12 +442,14 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel', style: TextStyle(color: Color(0xFF94A3B8))),
+              child: const Text('Cancel',
+                  style: TextStyle(color: AppColors.textMuted)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: _primary),
               onPressed: _saveTextScript,
-              child: const Text('Save Script', style: TextStyle(color: Colors.white)),
+              child: const Text('Save Script',
+                  style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -427,20 +458,25 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
   }
 
   Widget _dialogLabel(String text) => Text(
-    text,
-    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
-  );
+        text,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textSlate,
+        ),
+      );
 
   InputDecoration _inputDecoration(String hint) => InputDecoration(
-    hintText: hint,
-    hintStyle: const TextStyle(fontSize: 13, color: Color(0xFFCBD5E1)),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(8),
-      borderSide: const BorderSide(color: _primary, width: 1.5),
-    ),
-  );
+        hintText: hint,
+        hintStyle: const TextStyle(fontSize: 13, color: AppColors.textFaint),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: _primary, width: 1.5),
+        ),
+      );
 
   // ── Snackbars & Dialogs ─────────────────────────────
   void _showLoading(String msg) {
@@ -467,7 +503,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
         const SizedBox(width: 8),
         Expanded(child: Text(msg)),
       ]),
-      backgroundColor: Colors.green.shade700,
+      backgroundColor: AppColors.success,
       duration: const Duration(seconds: 3),
     ));
   }
@@ -479,7 +515,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
         const SizedBox(width: 8),
         Expanded(child: Text(msg)),
       ]),
-      backgroundColor: Colors.red.shade700,
+      backgroundColor: AppColors.error,
       duration: const Duration(seconds: 4),
     ));
   }
@@ -488,19 +524,21 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
   List<Map<String, dynamic>> get _filteredBuiltin {
     var list = _builtinScripts;
     if (_searchQuery.isNotEmpty) {
-      list = list.where((s) =>
-        s['title'].toString().toLowerCase().contains(_searchQuery) ||
-        s['description'].toString().toLowerCase().contains(_searchQuery)
-      ).toList();
+      list = list
+          .where((s) =>
+              s['title'].toString().toLowerCase().contains(_searchQuery) ||
+              s['description'].toString().toLowerCase().contains(_searchQuery))
+          .toList();
     }
     return list;
   }
 
   List<Map<String, dynamic>> get _filteredUploaded {
     if (_searchQuery.isEmpty) return _uploadedScripts;
-    return _uploadedScripts.where((s) =>
-      s['title'].toString().toLowerCase().contains(_searchQuery)
-    ).toList();
+    return _uploadedScripts
+        .where(
+            (s) => s['title'].toString().toLowerCase().contains(_searchQuery))
+        .toList();
   }
 
   // ═════════════════════════════════════════════════════
@@ -513,7 +551,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
       backgroundColor: _bg,
       appBar: _buildAppBar(),
       body: _buildBody(),
-      floatingActionButton: _currentStep == 2 ? _buildFab() : null,
+      floatingActionButton:
+          _currentStep == 2 && _isScriptBasedMode ? _buildFab() : null,
     );
   }
 
@@ -531,7 +570,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
         actions = [
           TextButton(
             onPressed: _goBack,
-            child: const Text('Change Mode', style: TextStyle(color: Colors.white70)),
+            child: const Text('Change Mode',
+                style: TextStyle(color: Colors.white70)),
           ),
         ];
         break;
@@ -551,7 +591,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
     }
 
     return AppBar(
-      title: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+      title: Text(title,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
       backgroundColor: _primary,
       foregroundColor: Colors.white,
       elevation: 0,
@@ -562,7 +603,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
             )
           : null,
       actions: actions,
-      bottom: _currentStep == 2
+        bottom: _currentStep == 2 && _isScriptBasedMode
           ? PreferredSize(
               preferredSize: const Size.fromHeight(100),
               child: Column(
@@ -572,15 +613,18 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                     padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
                     child: TextField(
                       controller: _searchCtrl,
-                      onChanged: (v) => setState(() => _searchQuery = v.toLowerCase()),
+                      onChanged: (v) =>
+                          setState(() => _searchQuery = v.toLowerCase()),
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         hintText: 'Search scripts...',
                         hintStyle: const TextStyle(color: Colors.white54),
-                        prefixIcon: const Icon(Icons.search, color: Colors.white54),
+                        prefixIcon:
+                            const Icon(Icons.search, color: Colors.white54),
                         suffixIcon: _searchQuery.isNotEmpty
                             ? IconButton(
-                                icon: const Icon(Icons.clear, color: Colors.white54),
+                                icon: const Icon(Icons.clear,
+                                    color: Colors.white54),
                                 onPressed: () {
                                   _searchCtrl.clear();
                                   setState(() => _searchQuery = '');
@@ -604,7 +648,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                     indicatorWeight: 3,
                     labelColor: Colors.white,
                     unselectedLabelColor: Colors.white54,
-                    labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    labelStyle: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600),
                     tabs: [
                       const Tab(text: 'Built-in'),
                       Tab(text: 'My Scripts (${_uploadedScripts.length})'),
@@ -644,12 +689,13 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
         children: [
           const Text(
             'What would you like to practice?',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: _textDark),
+            style: TextStyle(
+                fontSize: 22, fontWeight: FontWeight.bold, color: _textDark),
           ),
           const SizedBox(height: 6),
-          Text(
+          const Text(
             'Select a practice mode to get started',
-            style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+            style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
           ),
           const SizedBox(height: 24),
 
@@ -657,48 +703,56 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
 
           const SizedBox(height: 24),
 
-          // Quick access to uploaded scripts
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: _cardBg,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _border),
+          if (_selectedMode == ScriptMode.scriptBased) ...[
+            // Quick access to uploaded scripts
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: _cardBg,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _border),
+              ),
+              child: Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.folder_open_outlined,
+                      color: _primary, size: 24),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('My Scripts',
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: _textDark)),
+                      Text('${_uploadedScripts.length} uploaded scripts',
+                          style: const TextStyle(
+                              fontSize: 13, color: AppColors.textSecondary)),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _currentStep = 2;
+                      _selectedMode = ScriptMode.scriptBased;
+                      _selectedLevel = null;
+                    });
+                    _loadScripts();
+                  },
+                  child:
+                      const Text('View All', style: TextStyle(color: _primary)),
+                ),
+              ]),
             ),
-            child: Row(children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: _primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.folder_open_outlined, color: _primary, size: 24),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('My Scripts', style: TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.bold, color: _textDark)),
-                    Text('${_uploadedScripts.length} uploaded scripts',
-                        style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
-                  ],
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    _currentStep = 2;
-                    _selectedMode = null;
-                    _selectedLevel = null;
-                  });
-                  _loadScripts();
-                },
-                child: const Text('View All', style: TextStyle(color: _primary)),
-              ),
-            ]),
-          ),
+          ],
         ],
       ),
     );
@@ -716,7 +770,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
           border: Border.all(color: _border),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
+              color: AppColors.cardShadow,
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -736,17 +790,21 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(mode.label, style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.bold, color: _textDark)),
+                Text(mode.label,
+                    style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: _textDark)),
                 const SizedBox(height: 4),
                 Text(
                   _modeDescription(mode),
-                  style: TextStyle(fontSize: 13, color: Colors.grey.shade500, height: 1.4),
+                  style: const TextStyle(
+                      fontSize: 13, color: AppColors.textMuted, height: 1.4),
                 ),
               ],
             ),
           ),
-          const Icon(Icons.chevron_right, color: Color(0xFFCBD5E1)),
+          const Icon(Icons.chevron_right, color: AppColors.textFaint),
         ]),
       ),
     );
@@ -784,8 +842,11 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(_selectedMode!.label, style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w600, color: _primary)),
+                  Text(_selectedMode!.label,
+                      style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: _primary)),
                   const Text('Select your proficiency level',
                       style: TextStyle(fontSize: 13, color: _textGrey)),
                 ],
@@ -793,7 +854,6 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
             ),
           ]),
           const SizedBox(height: 24),
-
           ...ProficiencyLevel.values.map((level) => _levelCard(level)),
         ],
       ),
@@ -825,17 +885,21 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(level.label, style: const TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.bold, color: _textDark)),
+                Text(level.label,
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: _textDark)),
                 const SizedBox(height: 2),
                 Text(
                   _levelDescription(level),
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.textSecondary),
                 ),
               ],
             ),
           ),
-          Icon(Icons.chevron_right, color: Colors.grey.shade300),
+          const Icon(Icons.chevron_right, color: AppColors.textFaint),
         ]),
       ),
     );
@@ -859,6 +923,10 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
   // ── Step 2: Script List ─────────────────────────────
   Widget _buildScriptList() {
     if (_error != null) return _buildErrorView();
+
+    if (!_isScriptBasedMode) {
+      return _buildBuiltinTab();
+    }
 
     return TabBarView(
       controller: _tabs,
@@ -886,7 +954,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
           : ListView.builder(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
               itemCount: _filteredBuiltin.length,
-              itemBuilder: (ctx, i) => _scriptCard(_filteredBuiltin[i], isBuiltin: true),
+              itemBuilder: (ctx, i) =>
+                  _scriptCard(_filteredBuiltin[i], isBuiltin: true),
             ),
     );
   }
@@ -905,7 +974,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
           : ListView.builder(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
               itemCount: _filteredUploaded.length,
-              itemBuilder: (ctx, i) => _scriptCard(_filteredUploaded[i], isBuiltin: false),
+              itemBuilder: (ctx, i) =>
+                  _scriptCard(_filteredUploaded[i], isBuiltin: false),
             ),
     );
   }
@@ -941,7 +1011,9 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                   child: Text(
                     script['title'] ?? 'Untitled',
                     style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.bold, color: _textDark),
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: _textDark),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -964,7 +1036,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
               Text(
                 preview,
                 style: const TextStyle(
-                    fontSize: 13, color: Color(0xFF94A3B8), height: 1.45),
+                    fontSize: 13, color: AppColors.textMuted, height: 1.45),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -973,21 +1045,27 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
 
               // Footer
               Row(children: [
-                Icon(Icons.text_fields_rounded, size: 13, color: Colors.grey.shade400),
+                const Icon(Icons.text_fields_rounded,
+                    size: 13, color: AppColors.textMuted),
                 const SizedBox(width: 4),
                 Text('$wordCount words',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+                    style:
+                        const TextStyle(fontSize: 11, color: AppColors.textMuted)),
                 const SizedBox(width: 12),
                 if (isBuiltin) ...[
-                  Icon(Icons.verified_rounded, size: 13, color: Colors.blue.shade400),
+                  const Icon(Icons.verified_rounded,
+                      size: 13, color: AppColors.accent),
                   const SizedBox(width: 4),
-                  Text('PronounceMate',
-                      style: TextStyle(fontSize: 11, color: Colors.blue.shade400)),
+                  const Text('PronounceMate',
+                      style:
+                          TextStyle(fontSize: 11, color: AppColors.accent)),
                 ] else ...[
-                  Icon(Icons.person_outline_rounded, size: 13, color: Colors.grey.shade400),
+                  const Icon(Icons.person_outline_rounded,
+                      size: 13, color: AppColors.textMuted),
                   const SizedBox(width: 4),
-                  Text('Your script',
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+                  const Text('Your script',
+                      style:
+                          TextStyle(fontSize: 11, color: AppColors.textMuted)),
                 ],
                 const Spacer(),
                 ElevatedButton(
@@ -1002,7 +1080,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                         borderRadius: BorderRadius.circular(8)),
                   ),
                   child: const Text('Practice',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      style:
+                          TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                 ),
               ]),
             ],
@@ -1046,18 +1125,19 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(icon, size: 60, color: Colors.grey.shade300),
+                  Icon(icon, size: 60, color: AppColors.textFaint),
                   const SizedBox(height: 16),
                   Text(message,
                       textAlign: TextAlign.center,
-                      style: TextStyle(
+                      style: const TextStyle(
                           fontSize: 16,
-                          color: Colors.grey.shade600,
+                          color: AppColors.textSecondary,
                           fontWeight: FontWeight.w500)),
                   const SizedBox(height: 8),
                   Text(hint,
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.textMuted)),
                   if (showAddButton) ...[
                     const SizedBox(height: 24),
                     ElevatedButton.icon(
@@ -1090,17 +1170,18 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.wifi_off, size: 56, color: Colors.grey.shade400),
+            const Icon(Icons.wifi_off, size: 56, color: AppColors.textMuted),
             const SizedBox(height: 16),
-            Text('Could not load scripts',
+            const Text('Could not load scripts',
                 style: TextStyle(
                     fontSize: 18,
-                    color: Colors.grey.shade700,
+                    color: AppColors.textPrimary,
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Text(_error!,
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
+                style: const TextStyle(
+                    fontSize: 13, color: AppColors.textSecondary)),
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: _loadScripts,
@@ -1109,7 +1190,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
               style: ElevatedButton.styleFrom(
                 backgroundColor: _primary,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
               ),
@@ -1133,7 +1215,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
   void _showUploadOptions() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -1145,10 +1227,10 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
           children: [
             Center(
               child: Container(
-                width: 40,
+                width: 44,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
+                  color: AppColors.textFaint,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -1156,17 +1238,19 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
             const SizedBox(height: 20),
             const Text('Add Your Script',
                 style: TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.bold, color: _textDark)),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: _textDark)),
             const SizedBox(height: 4),
-            Text(
+            const Text(
               'Choose how you want to add a new practice script',
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 20),
             _uploadOptionTile(
               icon: Icons.upload_file_outlined,
-              iconColor: const Color(0xFF0F6E56),
-              iconBg: const Color(0xFFE0F7F7),
+              iconColor: AppColors.accent,
+              iconBg: AppColors.surfaceVariant,
               title: 'Upload a File',
               subtitle: 'Supports .txt and .docx formats',
               onTap: () {
@@ -1178,7 +1262,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
             _uploadOptionTile(
               icon: Icons.edit_note_outlined,
               iconColor: _primary,
-              iconBg: const Color(0xFFEBF4FF),
+              iconBg: _primary.withValues(alpha: 0.1),
               title: 'Type or Paste Text',
               subtitle: 'Write your own script directly',
               onTap: () {
@@ -1226,14 +1310,17 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
               children: [
                 Text(title,
                     style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.bold, color: _textDark)),
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: _textDark)),
                 const SizedBox(height: 2),
                 Text(subtitle,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary)),
               ],
             ),
           ),
-          Icon(Icons.chevron_right, color: Colors.grey.shade300),
+          const Icon(Icons.chevron_right, color: AppColors.textFaint),
         ]),
       ),
     );

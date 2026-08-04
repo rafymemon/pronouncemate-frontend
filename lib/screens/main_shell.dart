@@ -7,15 +7,23 @@ import 'home_screen.dart';
 import 'script_selection_screen.dart';
 
 class MainShell extends StatefulWidget {
-  const MainShell({super.key});
+  final int initialIndex;
+
+  const MainShell({super.key, this.initialIndex = 0});
 
   @override
   State<MainShell> createState() => _MainShellState();
 }
 
 class _MainShellState extends State<MainShell> {
-  int _currentIndex = 0;
+  late int _currentIndex;
   final GlobalKey<HomeScreenState> _homeKey = GlobalKey<HomeScreenState>();
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -167,64 +175,14 @@ class _PracticeTabState extends State<_PracticeTab> {
     if (_selectedMode == null || _selectedProficiency == null) return;
 
     if (_selectedMode == 'Script-Based') {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-          backgroundColor: AppColors.surface,
-          title: const Text(
-            'Choose Script Source',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-            ),
+      final levelValue = _getLevelValue(_selectedProficiency);
+
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ScriptSelectionScreen.withFilters(
+            preselectedMode: 'script_based',
+            preselectedLevel: levelValue!,
           ),
-          content: const Text(
-            'Select a predefined script or browse your own script to upload.',
-            style: TextStyle(color: AppColors.textSecondary, height: 1.4),
-          ),
-          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1A3A6B),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const ScriptSelectionScreen(),
-                  ),
-                );
-              },
-              child: const Text('Predefined Scripts'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.success,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const ScriptSelectionScreen(),
-                  ),
-                );
-              },
-              child: const Text('Browse Script'),
-            ),
-          ],
         ),
       );
       return;

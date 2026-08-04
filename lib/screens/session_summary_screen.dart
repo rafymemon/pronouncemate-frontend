@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import '../theme/app_theme.dart';
 import 'active_session_screen.dart';
 import '../widgets/practice_mistake_button.dart';
-import '../providers/practice_provider.dart';
 import 'practice_session_screen.dart';
 import '../models/practice_models.dart';
 import '../config.dart';
@@ -40,12 +40,14 @@ class SessionSummaryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // ── FIX: Use backend stats when available, otherwise fall back to local ──
-    final correctCount = correctWords ?? words.where((w) => w.status == WordStatus.correct).length;
-    final errorCount   = wrongWords   ?? words.where((w) => w.status == WordStatus.error).length;
-    final totalCount   = totalWords   ?? words.length;
+    final correctCount = correctWords ??
+        words.where((w) => w.status == WordStatus.correct).length;
+    final errorCount =
+        wrongWords ?? words.where((w) => w.status == WordStatus.error).length;
+    final totalCount = totalWords ?? words.length;
     final displayScore = wordAccuracy ?? sessionScore;
-    final grade        = _getGrade(displayScore);
-    final gradeColor   = _gradeColor(displayScore);
+    final grade = _getGrade(displayScore);
+    final gradeColor = _gradeColor(displayScore);
 
     final errors = words.where((w) => w.status == WordStatus.error).toList();
 
@@ -65,39 +67,42 @@ class SessionSummaryScreen extends StatelessWidget {
       }
     });
 
-    final topMistakes = errors.map((e) => {
-      'word': e.text,
-      'error_type': e.type ?? 'error',
-      'severity': e.score != null ? (100 - e.score!).round().clamp(1, 10) : 5,
-      'per_word_score': e.score ?? 0.0,
-      'ref_phonemes': <String>[],
-      'pred_phonemes': <String>[],
-      'explanation': e.tip ?? '',
-      'audio_path': e.audioPath,
-    }).toList();
+    final topMistakes = errors
+        .map((e) => {
+              'word': e.text,
+              'error_type': e.type ?? 'error',
+              'severity':
+                  e.score != null ? (100 - e.score!).round().clamp(1, 10) : 5,
+              'per_word_score': e.score ?? 0.0,
+              'ref_phonemes': <String>[],
+              'pred_phonemes': <String>[],
+              'explanation': e.tip ?? '',
+              'audio_path': e.audioPath,
+            })
+        .toList();
 
     // Prefer backend mistake_summary if we have it
-    final backendMistakeSummary = stats?['mistake_summary'] as Map<String, dynamic>?;
+    final backendMistakeSummary =
+        stats?['mistake_summary'] as Map<String, dynamic>?;
     final mistakeSummary = MistakeSummary(
       mistakeCount: backendMistakeSummary?['mistake_count'] ?? errors.length,
-      offerPractice: backendMistakeSummary?['offer_practice'] ?? errors.isNotEmpty,
+      offerPractice:
+          backendMistakeSummary?['offer_practice'] ?? errors.isNotEmpty,
       severityBreakdown: Map<String, int>.from(
-        backendMistakeSummary?['severity_breakdown'] ?? severityBreakdown
-      ),
-      mostCommonError: backendMistakeSummary?['most_common_error'] ?? mostCommonError,
-      words: List<String>.from(
-        backendMistakeSummary?['words'] ?? errors.map((e) => e.text).toList()
-      ),
+          backendMistakeSummary?['severity_breakdown'] ?? severityBreakdown),
+      mostCommonError:
+          backendMistakeSummary?['most_common_error'] ?? mostCommonError,
+      words: List<String>.from(backendMistakeSummary?['words'] ??
+          errors.map((e) => e.text).toList()),
       topMistakes: List<Map<String, dynamic>>.from(
-        backendMistakeSummary?['top_mistakes'] ?? topMistakes
-      ),
+          backendMistakeSummary?['top_mistakes'] ?? topMistakes),
     );
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppColors.screenBackground,
       appBar: AppBar(
         title: const Text("Session Summary"),
-        backgroundColor: const Color(0xFF1A3A6B),
+        backgroundColor: AppColors.brandBlue,
         foregroundColor: Colors.white,
         automaticallyImplyLeading: false,
       ),
@@ -106,30 +111,28 @@ class SessionSummaryScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
             // ── Score card ────────────────────────────────
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: const Color(0xFF1A3A6B),
+                color: AppColors.brandBlue,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Column(children: [
-                Text(grade,
-                    style: TextStyle(
-                        fontSize: 52, fontWeight: FontWeight.bold,
-                        color: gradeColor)),
+                Text(grade, style: TextStyle(fontSize: 52, color: gradeColor)),
                 const SizedBox(height: 4),
                 Text("${displayScore.toStringAsFixed(1)}%",
                     style: const TextStyle(
-                        fontSize: 28, color: Colors.white,
+                        fontSize: 28,
+                        color: Colors.white,
                         fontWeight: FontWeight.w600)),
                 const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _scoreItem("✓  $correctCount", "Correct", Colors.greenAccent),
+                    _scoreItem(
+                        "✓  $correctCount", "Correct", Colors.greenAccent),
                     _scoreItem("✗  $errorCount", "Errors", Colors.redAccent),
                     _scoreItem("$totalCount", "Total", Colors.white70),
                   ],
@@ -147,7 +150,7 @@ class SessionSummaryScreen extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: AppColors.softBorder),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -156,11 +159,12 @@ class SessionSummaryScreen extends StatelessWidget {
                         style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF1A3A6B))),
+                            color: AppColors.brandBlue)),
                     const SizedBox(height: 4),
-                    const Text("Compare your recording with the correct pronunciation",
+                    const Text(
+                        "Compare your recording with the correct pronunciation",
                         style: TextStyle(
-                            fontSize: 12, color: Color(0xFF94A3B8))),
+                            fontSize: 12, color: AppColors.textMuted)),
                     const SizedBox(height: 12),
                     Row(
                       children: [
@@ -169,7 +173,7 @@ class SessionSummaryScreen extends StatelessWidget {
                             label: "My Recording",
                             icon: Icons.mic,
                             audioUrl: AppConfig.mediaUrl(recordingUrl),
-                            color: const Color(0xFF1A3A6B),
+                            color: AppColors.brandBlue,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -180,7 +184,7 @@ class SessionSummaryScreen extends StatelessWidget {
                             audioUrl: errors.isNotEmpty
                                 ? AppConfig.mediaUrl(errors.first.audioPath)
                                 : null,
-                            color: const Color(0xFF6B7C2A),
+                            color: AppColors.brandOlive,
                           ),
                         ),
                       ],
@@ -195,64 +199,71 @@ class SessionSummaryScreen extends StatelessWidget {
             // ── Errors list ───────────────────────────────
             if (errors.isNotEmpty) ...[
               const Text("Errors Detected",
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A3A6B))),
+                  style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.brandBlue)),
               const SizedBox(height: 12),
               ...errors.map((e) => Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.red.shade100),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(e.text,
-                              style: TextStyle(
-                                  fontSize: 16, fontWeight: FontWeight.bold,
-                                  color: Colors.red.shade700)),
-                          const SizedBox(width: 4),
-                          PronunciationAudioButton(
-                            audioUrl: AppConfig.mediaUrl(e.audioPath),
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.red.shade100),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade50,
+                            borderRadius: BorderRadius.circular(6),
                           ),
-                        ],
-                      ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(e.text,
+                                  style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.red.shade700)),
+                              const SizedBox(width: 4),
+                              PronunciationAudioButton(
+                                audioUrl: AppConfig.mediaUrl(e.audioPath),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text((e.type ?? 'error').toUpperCase(),
+                                  style: const TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.textMuted,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 1)),
+                              Text(
+                                  "Score: ${(e.score ?? 0).toStringAsFixed(0)}%",
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      color: AppColors.textSlate)),
+                              if (e.tip != null)
+                                Text(e.tip!,
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textSecondary)),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text((e.type ?? 'error').toUpperCase(),
-                              style: const TextStyle(
-                                  fontSize: 11, color: Color(0xFF94A3B8),
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 1)),
-                          Text("Score: ${(e.score ?? 0).toStringAsFixed(0)}%",
-                              style: const TextStyle(
-                                  fontSize: 13, color: Color(0xFF475569))),
-                          if (e.tip != null)
-                            Text(e.tip!,
-                                style: const TextStyle(
-                                    fontSize: 12, color: Color(0xFF64748B))),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              )),
+                  )),
             ],
 
             if (errors.isEmpty)
@@ -263,10 +274,12 @@ class SessionSummaryScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(children: [
-                  Icon(Icons.check_circle, color: Colors.green.shade600, size: 28),
+                  Icon(Icons.check_circle,
+                      color: Colors.green.shade600, size: 28),
                   const SizedBox(width: 12),
                   const Text("Perfect pronunciation! No errors detected.",
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
                 ]),
               ),
 
@@ -287,20 +300,19 @@ class SessionSummaryScreen extends StatelessWidget {
                   label: const Text("Retry"),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    side: const BorderSide(color: Color(0xFF1A3A6B)),
+                    side: const BorderSide(color: AppColors.brandBlue),
                   ),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () =>
-                      Navigator.pushNamedAndRemoveUntil(
-                          context, '/home', (_) => false),
+                  onPressed: () => Navigator.pushNamedAndRemoveUntil(
+                      context, '/home', (_) => false),
                   icon: const Icon(Icons.home),
                   label: const Text("Home"),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1A3A6B),
+                    backgroundColor: AppColors.brandBlue,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
@@ -326,8 +338,9 @@ class SessionSummaryScreen extends StatelessWidget {
 
   Widget _scoreItem(String value, String label, Color color) {
     return Column(children: [
-      Text(value, style: TextStyle(fontSize: 20,
-          fontWeight: FontWeight.bold, color: color)),
+      Text(value,
+          style: TextStyle(
+              fontSize: 20, fontWeight: FontWeight.bold, color: color)),
       Text(label, style: const TextStyle(fontSize: 12, color: Colors.white54)),
     ]);
   }
@@ -346,17 +359,21 @@ class SessionSummaryScreen extends StatelessWidget {
     return Colors.redAccent;
   }
 
-  void _startPracticeSession(BuildContext context, List<WordResult> errorWords) {
-    final mistakeWords = errorWords.map((e) => MistakeWord(
-      word: e.text,
-      errorType: e.type ?? 'error',
-      severity: e.score != null ? (100 - e.score!).round().clamp(1, 10) : 5,
-      perWordScore: e.score ?? 0.0,
-      refPhonemes: [],
-      predPhonemes: [],
-      explanation: e.tip ?? '',
-      audioPath: e.audioPath,
-    )).toList();
+  void _startPracticeSession(
+      BuildContext context, List<WordResult> errorWords) {
+    final mistakeWords = errorWords
+        .map((e) => MistakeWord(
+              word: e.text,
+              errorType: e.type ?? 'error',
+              severity:
+                  e.score != null ? (100 - e.score!).round().clamp(1, 10) : 5,
+              perWordScore: e.score ?? 0.0,
+              refPhonemes: [],
+              predPhonemes: [],
+              explanation: e.tip ?? '',
+              audioPath: e.audioPath,
+            ))
+        .toList();
 
     Navigator.push(
       context,
@@ -380,7 +397,8 @@ class PronunciationAudioButton extends StatefulWidget {
   const PronunciationAudioButton({super.key, this.audioUrl});
 
   @override
-  State<PronunciationAudioButton> createState() => _PronunciationAudioButtonState();
+  State<PronunciationAudioButton> createState() =>
+      _PronunciationAudioButtonState();
 }
 
 class _PronunciationAudioButtonState extends State<PronunciationAudioButton> {
@@ -433,7 +451,7 @@ class _PronunciationAudioButtonState extends State<PronunciationAudioButton> {
   @override
   Widget build(BuildContext context) {
     if (widget.audioUrl == null || widget.audioUrl!.isEmpty) {
-      return const Icon(Icons.volume_off, color: Color(0xFFCBD5E1), size: 18);
+      return const Icon(Icons.volume_off, color: AppColors.textFaint, size: 18);
     }
 
     return InkWell(
@@ -447,12 +465,12 @@ class _PronunciationAudioButtonState extends State<PronunciationAudioButton> {
                 height: 18,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: Color(0xFF1A3A6B),
+                  color: AppColors.brandBlue,
                 ),
               )
             : Icon(
                 _isPlaying ? Icons.volume_up : Icons.volume_up_outlined,
-                color: const Color(0xFF1A3A6B),
+                color: AppColors.brandBlue,
                 size: 18,
               ),
       ),
@@ -521,7 +539,8 @@ class _AudioPlayButtonState extends State<_AudioPlayButton> {
 
   @override
   Widget build(BuildContext context) {
-    final bool hasAudio = widget.audioUrl != null && widget.audioUrl!.isNotEmpty;
+    final bool hasAudio =
+        widget.audioUrl != null && widget.audioUrl!.isNotEmpty;
 
     return ElevatedButton.icon(
       onPressed: hasAudio && !_isLoading ? _play : null,
@@ -545,8 +564,7 @@ class _AudioPlayButtonState extends State<_AudioPlayButton> {
         foregroundColor: Colors.white,
         disabledBackgroundColor: Colors.grey.shade300,
         padding: const EdgeInsets.symmetric(vertical: 12),
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }

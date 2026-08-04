@@ -133,8 +133,8 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
             const SizedBox(height: 16),
             _buildStatsGrid(),
             const SizedBox(height: 16),
-            _buildSDGBadge(),
-            const SizedBox(height: 24),
+            // _buildSDGBadge(),
+            // const SizedBox(height: 24),
           ],
         ),
       ),
@@ -325,9 +325,9 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
   // ── Score by Mode ─────────────────────────────────────
   Widget _buildScoreByMode() {
     final modes = [
-      _ModeScore('Public Speaking', _modeScores['public_speaking'] ?? 0, const Color(0xFF1A3A6B)),
-      _ModeScore('Daily Conversation', _modeScores['daily_conversation'] ?? 0, const Color(0xFF0F6E56)),
-      _ModeScore('Script-Based', _modeScores['script_based'] ?? 0, const Color(0xFF7C3AED)),
+      _ModeScore('Public Speaking', _modeScores['public_speaking'] ?? 0, AppColors.primary),
+      _ModeScore('Daily Conversation', _modeScores['daily_conversation'] ?? 0, AppColors.accent),
+      _ModeScore('Script-Based', _modeScores['script_based'] ?? 0, AppColors.success),
     ];
 
     return _card(
@@ -574,10 +574,10 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
   // ── Stats Grid ────────────────────────────────────────
   Widget _buildStatsGrid() {
     final stats = [
-      _GridStat('${_totalStats.sessions}', 'Total Sessions', const Color(0xFF1A3A6B)),
-      _GridStat('${_totalStats.words}', 'Words Practiced', const Color(0xFF16A34A)),
-      _GridStat('${_totalStats.errors}', 'Errors Corrected', const Color(0xFF7C3AED)),
-      _GridStat('${(_totalStats.minutes / 60).toStringAsFixed(1)}h', 'Practice Time', const Color(0xFF2563EB)),
+      _GridStat('${_totalStats.sessions}', 'Total Sessions', AppColors.primary),
+      _GridStat('${_totalStats.words}', 'Words Practiced', AppColors.accent),
+      _GridStat('${_totalStats.errors}', 'Errors Corrected', AppColors.success),
+      _GridStat('${(_totalStats.minutes / 60).toStringAsFixed(1)}h', 'Practice Time', AppColors.brandBlue),
     ];
 
     return GridView.count(
@@ -611,23 +611,23 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
     );
   }
 
-  // ── SDG 4 Badge ───────────────────────────────────────
-  Widget _buildSDGBadge() {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Color(0xFF0F6E56), Color(0xFF16A34A)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: const Column(
-        children: [
-          Text('🌍 Supporting SDG 4: Quality Education', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
-          SizedBox(height: 4),
-          Text('Your progress data helps improve learning outcomes worldwide', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: Colors.white70)),
-        ],
-      ),
-    );
-  }
+  // // ── SDG 4 Badge ───────────────────────────────────────
+  // Widget _buildSDGBadge() {
+  //   return Container(
+  //     decoration: BoxDecoration(
+  //       gradient: const LinearGradient(colors: [Color(0xFF0F6E56), Color(0xFF16A34A)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+  //       borderRadius: BorderRadius.circular(16),
+  //     ),
+  //     padding: const EdgeInsets.all(16),
+  //     child: const Column(
+  //       children: [
+  //         Text('🌍 Supporting SDG 4: Quality Education', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
+  //         SizedBox(height: 4),
+  //         Text('Your progress data helps improve learning outcomes worldwide', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: Colors.white70)),
+  //       ],
+  //     ),
+  //   );
+  // }
 
   // ── Share ─────────────────────────────────────────────
   void _shareProgress() {

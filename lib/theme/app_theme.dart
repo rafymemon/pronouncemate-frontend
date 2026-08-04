@@ -2,36 +2,44 @@ import 'package:flutter/material.dart';
 
 class AppColors {
   // ── Core Palette (from Figma) ────────────────────────────────
-  static const Color background    = Color(0xFFCFEBEE); // light cyan bg
+  static const Color background = Color(0xFFCFEBEE); // light cyan bg
   static const Color backgroundAlt = Color(0xFFB8DEE3); // slightly deeper cyan
-  static const Color surface       = Color(0xFFFFFFFF); // white cards
-  static const Color surfaceVariant= Color(0xFFEBF7F9); // very light cyan fill
+  static const Color screenBackground = Color(0xFFF8FAFC);
+  static const Color sessionBackground = Color(0xFFD6E9EB);
+  static const Color surface = Color(0xFFFFFFFF); // white cards
+  static const Color surfaceVariant = Color(0xFFEBF7F9); // very light cyan fill
+  static const Color softBorder = Color(0xFFE2E8F0);
 
   // Olive / yellow-green — buttons & accents (from Figma)
-  static const Color primary       = Color(0xFF8A9A2C); // olive green button
-  static const Color primaryDark   = Color(0xFF6B7820); // darker olive hover
-  static const Color primaryLight  = Color(0xFFB5C44A); // lighter olive
+  static const Color primary = Color(0xFF8A9A2C); // olive green button
+  static const Color primaryDark = Color(0xFF6B7820); // darker olive hover
+  static const Color primaryLight = Color(0xFFB5C44A); // lighter olive
+  static const Color brandOlive = Color(0xFF6B7C2A);
+  static const Color brandBlue = Color(0xFF1A3A6B);
 
   // Supporting tones
-  static const Color accent        = Color(0xFF4AABBA); // teal accent
-  static const Color accentLight   = Color(0xFF7ECAD5);
+  static const Color accent = Color(0xFF4AABBA); // teal accent
+  static const Color accentLight = Color(0xFF7ECAD5);
 
   // Text
-  static const Color textPrimary   = Color(0xFF1A2A2A); // near black
+  static const Color textPrimary = Color(0xFF1A2A2A); // near black
   static const Color textSecondary = Color(0xFF4A6568); // muted teal-gray
-  static const Color textHint      = Color(0xFF8AABAE); // soft hint
+  static const Color textHint = Color(0xFF8AABAE); // soft hint
+  static const Color textSlate = Color(0xFF475569);
+  static const Color textMuted = Color(0xFF94A3B8);
+  static const Color textFaint = Color(0xFFCBD5E1);
 
   // Status
-  static const Color success       = Color(0xFF2E7D52);
-  static const Color successLight  = Color(0xFFE8F5EE);
-  static const Color error         = Color(0xFFB23A3A);
-  static const Color errorLight    = Color(0xFFFDEAEA);
-  static const Color warning       = Color(0xFFD4820A);
-  static const Color warningLight  = Color(0xFFFFF3E0);
+  static const Color success = Color(0xFF2E7D52);
+  static const Color successLight = Color(0xFFE8F5EE);
+  static const Color error = Color(0xFFB23A3A);
+  static const Color errorLight = Color(0xFFFDEAEA);
+  static const Color warning = Color(0xFFD4820A);
+  static const Color warningLight = Color(0xFFFFF3E0);
 
   // Misc
-  static const Color divider       = Color(0xFFB8D8DC);
-  static const Color cardShadow    = Color(0x228AABAE);
+  static const Color divider = Color(0xFFB8D8DC);
+  static const Color cardShadow = Color(0x228AABAE);
 }
 
 class AppTheme {
@@ -113,8 +121,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide:
-              const BorderSide(color: AppColors.accent, width: 2),
+          borderSide: const BorderSide(color: AppColors.accent, width: 2),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),

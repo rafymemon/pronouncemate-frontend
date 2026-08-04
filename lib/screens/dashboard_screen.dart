@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import 'main_shell.dart';
 import 'progress_analytics_screen.dart';
-import 'script_selection_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -77,7 +77,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const ScriptSelectionScreen()),
+          MaterialPageRoute(builder: (_) => const MainShell(initialIndex: 1)),
         ),
         backgroundColor: AppColors.accent,
         icon: const Icon(Icons.mic_rounded, color: Colors.white),
@@ -443,9 +443,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // ── Mode Scores ───────────────────────────────────────
   Widget _buildModeScores() {
     final modes = [
-      _ModeDisplay('Public Speaking', 'public_speaking', Icons.campaign_rounded, const Color(0xFF1A3A6B)),
-      _ModeDisplay('Daily Conversation', 'daily_conversation', Icons.chat_bubble_rounded, const Color(0xFF0F6E56)),
-      _ModeDisplay('Script-Based', 'script_based', Icons.description_rounded, const Color(0xFF7C3AED)),
+      _ModeDisplay('Public Speaking', 'public_speaking', Icons.campaign_rounded, AppColors.primary),
+      _ModeDisplay('Daily Conversation', 'daily_conversation', Icons.chat_bubble_rounded, AppColors.accent),
+      _ModeDisplay('Script-Based', 'script_based', Icons.description_rounded, AppColors.success),
     ];
 
     return _card(
@@ -546,9 +546,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Color _modeColor(String? mode) {
     switch (mode) {
-      case 'public_speaking': return const Color(0xFF1A3A6B);
-      case 'daily_conversation': return const Color(0xFF0F6E56);
-      case 'script_based': return const Color(0xFF7C3AED);
+      case 'public_speaking': return AppColors.primary;
+      case 'daily_conversation': return AppColors.accent;
+      case 'script_based': return AppColors.success;
       default: return AppColors.primary;
     }
   }
