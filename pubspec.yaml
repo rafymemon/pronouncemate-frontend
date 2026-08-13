@@ -19,6 +19,7 @@ dependencies:
   file_picker: ^8.0.0
   fl_chart: ^0.68.0  # For line and pie charts
   just_audio: ^0.9.46
+  web_socket_channel: ^3.0.3
 
 dev_dependencies:
   flutter_test:

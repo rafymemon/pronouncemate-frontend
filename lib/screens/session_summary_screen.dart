@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../theme/app_theme.dart';
 import 'active_session_screen.dart';
-import '../widgets/practice_mistake_button.dart';
 import 'practice_session_screen.dart';
+import '../widgets/practice_mistake_button.dart';
 import '../models/practice_models.dart';
+import '../models/word_status.dart';   // ← ADDED: DisplayWord, WordStatus now live here
 import '../config.dart';
 
 class SessionSummaryScreen extends StatelessWidget {
-  final List<WordResult> words;
+  final List<DisplayWord> words;   // ← CHANGED from List<WordResult>
   final double sessionScore;
   final String script;
   final String sessionTitle;
@@ -326,9 +327,21 @@ class SessionSummaryScreen extends StatelessWidget {
 
             // ── Practice Mistakes Button ──────────────────
             if (errors.isNotEmpty)
-              PracticeMistakesButton(
-                mistakeSummary: mistakeSummary,
-                onPressed: () => _startPracticeSession(context, errors),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => _startPracticeSession(context, errors),
+                  icon: const Icon(Icons.school),
+                  label: const Text('Practice Mistakes'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.brandOlive,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
               ),
           ],
         ),
@@ -359,8 +372,8 @@ class SessionSummaryScreen extends StatelessWidget {
     return Colors.redAccent;
   }
 
-  void _startPracticeSession(
-      BuildContext context, List<WordResult> errorWords) {
+void _startPracticeSession(
+      BuildContext context, List<DisplayWord> errorWords) {   // ← CHANGED
     final mistakeWords = errorWords
         .map((e) => MistakeWord(
               word: e.text,

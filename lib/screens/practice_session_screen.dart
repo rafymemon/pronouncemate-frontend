@@ -1,12 +1,19 @@
 // screens/practice_session_screen.dart
-// Full practice session flow for mistake words
+// Practice flow for mistake words, with live word-by-word coloring
+// while the user is still speaking (via WebSocket), reconciled against
+// the accurate backend pipeline once recording stops.
 
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/practice_models.dart';
+import '../models/word_status.dart';
 import '../services/practice_api_service.dart';
 import '../widgets/mistake_word_chip.dart';
+import '../widgets/pronunciation_word_display.dart';
+import '../widgets/session_stats_bar.dart';
 import '../services/recording_service.dart';
+import '../services/practice_websocket_service.dart';
 
 class PracticeSessionScreen extends StatefulWidget {
   final List<MistakeWord> mistakeWords;
@@ -26,11 +33,18 @@ class PracticeSessionScreen extends StatefulWidget {
 
 class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
   final RecordingService _rec = RecordingService();
-  
+  final PracticeWebSocketService _ws = PracticeWebSocketService();
+
   bool _isRecording = false;
   bool _isProcessing = false;
   PracticeResult? _result;
   String? _practiceScript;
+  List<DisplayWord> _liveWords = [];
+
+  StreamSubscription? _wsSub;
+  final Stopwatch _stopwatch = Stopwatch();
+  Timer? _timer;
+  Duration _elapsed = Duration.zero;
 
   @override
   void initState() {
@@ -41,6 +55,9 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
   @override
   void dispose() {
     _rec.dispose();
+    _ws.dispose();
+    _timer?.cancel();
+    _wsSub?.cancel();
     super.dispose();
   }
 
@@ -52,7 +69,74 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
     if (response['success']) {
       setState(() {
         _practiceScript = response['practice_script'];
+        _liveWords = _practiceScript!
+            .split(RegExp(r'\s+'))
+            .where((w) => w.trim().isNotEmpty)
+            .map((w) => DisplayWord(w))
+            .toList();
       });
+    }
+  }
+
+  Future<void> _startRecording() async {
+  if (_practiceScript == null || _practiceScript!.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Practice script not loaded yet — please wait or go back and retry')),
+    );
+    return;
+  }
+  if (!await _rec.hasPermission()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Microphone permission required')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isRecording = true;
+      for (final w in _liveWords) {
+        w.status = WordStatus.pending;
+      }
+      _elapsed = Duration.zero;
+    });
+
+    _stopwatch
+      ..reset()
+      ..start();
+    _timer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      setState(() => _elapsed = _stopwatch.elapsed);
+    });
+
+    await _ws.connect(_practiceScript ?? '');
+    _wsSub = _ws.wordResults.listen((result) {
+      if (result.wordIndex < 0 || result.wordIndex >= _liveWords.length) return;
+      setState(() {
+        _liveWords[result.wordIndex].status =
+            result.correct ? WordStatus.correct : WordStatus.error;
+      });
+    });
+
+    final stream = await _rec.startLiveStream();
+    stream.listen((chunk) => _ws.sendAudioChunk(chunk));
+  }
+
+  Future<void> _stopAndSubmit() async {
+    if (!_isRecording) return;
+
+    _stopwatch.stop();
+    _timer?.cancel();
+    setState(() => _isRecording = false);
+
+    final file = await _rec.stopAndSaveWav();
+    await _wsSub?.cancel();
+    await _ws.close();
+
+    if (file != null) {
+      _submitPractice(file);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to save recording')),
+      );
     }
   }
 
@@ -67,6 +151,20 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
         mode: widget.mode,
       );
 
+      // Reconcile provisional colors with the accurate backend pipeline.
+      final strugglingWords = result.stillStruggling
+          .map((w) => (w['word'] as String).toLowerCase())
+          .toSet();
+
+      for (final w in _liveWords) {
+        final cleanWord = w.text.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
+        if (w.status != WordStatus.pending) {
+          w.status = strugglingWords.contains(cleanWord)
+              ? WordStatus.error
+              : WordStatus.correct;
+        }
+      }
+
       setState(() {
         _result = result;
         _isProcessing = false;
@@ -79,19 +177,10 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
     }
   }
 
-  Future<void> _stopAndSubmit() async {
-    if (!_isRecording) return;
-    
-    setState(() => _isRecording = false);
-    final file = await _rec.stop();
-    
-    if (file != null) {
-      _submitPractice(file);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to save recording')),
-      );
-    }
+  String _formatDuration(Duration d) {
+    final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
   }
 
   @override
@@ -105,14 +194,23 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
     );
   }
 
-  // ── FIXED: Wrapped in SingleChildScrollView to prevent overflow ──
   Widget _buildPracticeView() {
-    return SingleChildScrollView(  // ← ADDED
+    final spokenCount =
+        _liveWords.where((w) => w.status != WordStatus.pending).length;
+
+    return SingleChildScrollView(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (_isRecording || _result != null)
+              SessionStatsBar(
+                timerLabel: _formatDuration(_elapsed),
+                wordsLabel: '$spokenCount / ${_liveWords.length} words',
+                scoreLabel: '--',
+                accentColor: Colors.deepOrange,
+              ),
             if (_practiceScript != null) ...[
               const Text(
                 'Practice Script:',
@@ -125,10 +223,7 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
                   color: Colors.grey[100],
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Text(
-                  _practiceScript!,
-                  style: const TextStyle(fontSize: 20, height: 1.5),
-                ),
+                child: PronunciationWordDisplay(words: _liveWords),
               ),
             ],
             const SizedBox(height: 24),
@@ -140,7 +235,7 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: widget.mistakeWords.map((mw) => 
+              children: widget.mistakeWords.map((mw) =>
                 MistakeWordChip(
                   word: mw.word,
                   errorType: mw.errorType,
@@ -148,19 +243,10 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
                 ),
               ).toList(),
             ),
-            const SizedBox(height: 32),  // ← CHANGED: was const Spacer()
+            const SizedBox(height: 32),
             Center(
               child: GestureDetector(
-                onTapDown: (_) async {
-                  if (await _rec.hasPermission()) {
-                    await _rec.start();
-                    setState(() => _isRecording = true);
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Microphone permission required')),
-                    );
-                  }
-                },
+                onTapDown: (_) => _startRecording(),
                 onTapUp: (_) => _stopAndSubmit(),
                 onTapCancel: () => _stopAndSubmit(),
                 child: AnimatedContainer(
@@ -190,7 +276,7 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
             const SizedBox(height: 24),
             if (_isProcessing)
               const Center(child: CircularProgressIndicator()),
-            const SizedBox(height: 24),  // ← ADDED: bottom padding for scroll
+            const SizedBox(height: 24),
           ],
         ),
       ),

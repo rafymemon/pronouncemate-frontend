@@ -6,21 +6,11 @@ import 'package:just_audio/just_audio.dart';
 import '../theme/app_theme.dart';
 import '../services/recording_service.dart';
 import '../services/api_service.dart';
-import '../config.dart'; // ← ADDED
+import '../config.dart';
+import '../models/word_status.dart';
+import '../widgets/pronunciation_word_display.dart';
+import '../widgets/session_stats_bar.dart';
 import 'session_summary_screen.dart';
-
-enum WordStatus { pending, correct, error }
-
-class WordResult {
-  final String text;
-  WordStatus status;
-  String? tip;
-  double? score;
-  String? type;
-  String? audioPath;
-
-  WordResult(this.text) : status = WordStatus.pending;
-}
 
 enum _SessionState { idle, recording, processing, done }
 
@@ -53,7 +43,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
   final AudioPlayer _player = AudioPlayer();
 
   _SessionState _state = _SessionState.idle;
-  late List<WordResult> _words;
+  late List<DisplayWord> _words;
   int _correctCount = 0;
   double _score = 0;
   String? _latestFeedback;
@@ -63,6 +53,10 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
   late Stopwatch _stopwatch;
   late String _sessionId;
 
+  // Minimum recording length before we let Evaluate run — protects
+  // against accidental taps producing near-empty audio (0-word transcripts).
+  static const _minRecordingSeconds = 3;
+
   @override
   void initState() {
     super.initState();
@@ -71,8 +65,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     _words = widget.scriptText
         .split(RegExp(r'\s+'))
         .where((w) => w.trim().isNotEmpty)
-        .map((w) =>
-            WordResult(w.replaceAll(RegExp(r"[^\w']"), '').toLowerCase()))
+        .map((w) => DisplayWord(w.replaceAll(RegExp(r"[^\w']"), '').toLowerCase()))
         .toList();
   }
 
@@ -101,6 +94,11 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
   }
 
   Future<void> _evaluate() async {
+    if (_stopwatch.elapsed.inSeconds < _minRecordingSeconds) {
+      _snack('Recording too short — try reading the full script.', error: true);
+      return;
+    }
+
     _stopwatch.stop();
     final file = await _rec.stop();
     if (file == null) {
@@ -119,14 +117,12 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       final score = (result['score'] as num?)?.toDouble() ?? 0.0;
       final grade = result['grade']?.toString() ?? '';
 
-      // ── FIX: Use backend stats for summary (guarantees correct + wrong = total)
       final backendCorrect = (stats['correct_words'] as num?)?.toInt() ?? 0;
       final backendWrong = (stats['wrong_words'] as num?)?.toInt() ?? 0;
       final backendTotal = (stats['total_words'] as num?)?.toInt() ?? 0;
       final wordAccuracy =
           (stats['word_accuracy'] as num?)?.toDouble() ?? score;
 
-      // ── FIX: Handle duplicate words by consuming matches in order instead of Map overwrite
       final Map<String, List<Map<String, dynamic>>> wordQueue = {};
       for (final w in wordList) {
         final key = w['word']?.toString().toLowerCase() ?? '';
@@ -143,7 +139,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
           w.type = 'skipped';
           continue;
         }
-        final r = queue.removeAt(0); // consume first unmatched result
+        final r = queue.removeAt(0);
         final type = r['type']?.toString() ?? 'correct';
         w.status = type == 'correct' ? WordStatus.correct : WordStatus.error;
         w.type = type;
@@ -225,11 +221,10 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     return '$m:$s';
   }
 
-  // ── FIXED: Use AppConfig instead of hardcoded IP ─────
   Future<void> _playAudio() async {
     if (_audioPath == null) return;
     try {
-      final url = AppConfig.mediaUrl(_audioPath)!; // ← CHANGED
+      final url = AppConfig.mediaUrl(_audioPath)!;
       await _player.setUrl(url);
       await _player.play();
     } catch (_) {}
@@ -247,28 +242,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       content: Text(msg),
       backgroundColor: error ? Colors.red.shade700 : Colors.green.shade700,
     ));
-  }
-
-  Color _wordBg(WordStatus s) {
-    switch (s) {
-      case WordStatus.correct:
-        return const Color(0xFFD4EDDA);
-      case WordStatus.error:
-        return const Color(0xFFFFE0E0);
-      case WordStatus.pending:
-        return Colors.transparent;
-    }
-  }
-
-  Color _wordText(WordStatus s) {
-    switch (s) {
-      case WordStatus.correct:
-        return const Color(0xFF2E7D32);
-      case WordStatus.error:
-        return const Color(0xFFC62828);
-      case WordStatus.pending:
-        return _textDark;
-    }
   }
 
   @override
@@ -303,30 +276,13 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       ),
       body: Column(children: [
         if (_state == _SessionState.recording || _state == _SessionState.done)
-          Container(
-            margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            decoration: BoxDecoration(
-              color: _cardBg,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _statItem(
-                    Icons.timer_outlined, _timerStr, const Color(0xFF2196F3)),
-                _statDivider(),
-                _statItem(Icons.text_fields_rounded,
-                    '${_correctCount} / ${_words.length} words', _olive),
-                _statDivider(),
-                _statItem(
-                    Icons.analytics_outlined,
-                    _state == _SessionState.done
-                        ? '${_score.toStringAsFixed(0)}%'
-                        : '--',
-                    _olive),
-              ],
-            ),
+          SessionStatsBar(
+            timerLabel: _timerStr,
+            wordsLabel: '${_correctCount} / ${_words.length} words',
+            scoreLabel:
+                _state == _SessionState.done ? '${_score.toStringAsFixed(0)}%' : '--',
+            accentColor: _olive,
+            cardColor: _cardBg,
           ),
         Expanded(
           child: Container(
@@ -347,7 +303,11 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
                 const Divider(height: 20),
                 Expanded(
                   child: SingleChildScrollView(
-                    child: _buildScriptText(),
+                    child: PronunciationWordDisplay(
+                      words: _words,
+                      onWordTap: _showWordTip,
+                      pendingTextColor: _textDark,
+                    ),
                   ),
                 ),
               ],
@@ -392,42 +352,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     );
   }
 
-  Widget _buildScriptText() {
-    return RichText(
-      text: TextSpan(
-        children: _words.map((w) {
-          final hasTip = w.status == WordStatus.error && w.tip != null;
-          return WidgetSpan(
-            child: GestureDetector(
-              onTap: hasTip ? () => _showWordTip(w) : null,
-              child: Container(
-                margin: const EdgeInsets.only(right: 6, bottom: 6),
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                decoration: BoxDecoration(
-                  color: _wordBg(w.status),
-                  borderRadius: BorderRadius.circular(6),
-                  border: w.status == WordStatus.error
-                      ? Border(
-                          bottom:
-                              BorderSide(color: Colors.red.shade400, width: 2))
-                      : null,
-                ),
-                child: Text(w.text,
-                    style: TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w500,
-                      color: _wordText(w.status),
-                      fontFamily: 'serif',
-                    )),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  void _showWordTip(WordResult w) {
+  void _showWordTip(DisplayWord w) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -569,20 +494,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
-  }
-
-  Widget _statItem(IconData icon, String label, Color color) {
-    return Row(children: [
-      Icon(icon, size: 16, color: color),
-      const SizedBox(width: 6),
-      Text(label,
-          style: TextStyle(
-              fontSize: 13, fontWeight: FontWeight.w600, color: color)),
-    ]);
-  }
-
-  Widget _statDivider() {
-    return Container(width: 1, height: 20, color: Colors.grey.shade200);
   }
 
   @override

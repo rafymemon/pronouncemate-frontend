@@ -121,82 +121,186 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildImprovementCard(),
+            _PerformanceSpectrumCard(improvement: _improvement, sessions: _sessions),
             const SizedBox(height: 16),
-            if (_sessions.length >= 2) _buildAccuracyTrendChart(),
+            if (_sessions.length >= 2) _AccuracyTrendCard(sessions: _sessions),
             if (_sessions.length >= 2) const SizedBox(height: 16),
-            _buildScoreByMode(),
+            _ModeScoreCard(modeScores: _modeScores),
             const SizedBox(height: 16),
-            _buildErrorPieChart(),
+            _ErrorBreakdownCard(breakdown: _errorBreakdown),
             const SizedBox(height: 16),
-            _buildTopMispronouncedWords(),
+            _TopErrorsCard(errors: _topErrors),
             const SizedBox(height: 16),
-            _buildStatsGrid(),
+            _StatsGridCard(stats: _totalStats),
             const SizedBox(height: 16),
-            // _buildSDGBadge(),
-            // const SizedBox(height: 24),
           ],
         ),
       ),
     );
   }
 
-  // ── Improvement Card ──────────────────────────────────
-  Widget _buildImprovementCard() {
-    final isPositive = _improvement.percentageChange >= 0;
+  // ── Share ─────────────────────────────────────────────
+  void _shareProgress() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 20),
+            const Text('Share Your Progress', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.image, color: AppColors.primary),
+              title: const Text('Share as Image'),
+              onTap: () => Navigator.pop(ctx),
+            ),
+            ListTile(
+              leading: const Icon(Icons.text_snippet, color: AppColors.primary),
+              title: const Text('Share as Text'),
+              onTap: () => Navigator.pop(ctx),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Shared Card Shell ───────────────────────────────────
+
+class _CardShell extends StatelessWidget {
+  final Widget child;
+  const _CardShell({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.divider),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2))],
+      ),
+      padding: const EdgeInsets.all(16),
+      child: child,
+    );
+  }
+}
+
+// ── Animated Counter ────────────────────────────────────
+
+class _AnimatedCounter extends StatelessWidget {
+  final num value;
+  final bool isDouble;
+  final String suffix;
+  final TextStyle? style;
+  const _AnimatedCounter({required this.value, this.isDouble = false, this.suffix = '', this.style});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: value.toDouble()),
+      duration: const Duration(milliseconds: 1100),
+      curve: Curves.easeOutCubic,
+      builder: (context, val, child) {
+        final display = isDouble ? val.toStringAsFixed(1) : val.toInt().toString();
+        return Text('$display$suffix', style: style);
+      },
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// 1. PERFORMANCE SPECTRUM — Best / Average / Latest
+// ═══════════════════════════════════════════════════════
+
+class _PerformanceSpectrumCard extends StatelessWidget {
+  final ImprovementStats improvement;
+  final List<SessionData> sessions;
+  const _PerformanceSpectrumCard({required this.improvement, required this.sessions});
+
+  @override
+  Widget build(BuildContext context) {
+    final best = sessions.isEmpty ? 0.0 : sessions.map((s) => s.accuracy).reduce((a, b) => a > b ? a : b);
+    final avg = sessions.isEmpty ? 0.0 : sessions.map((s) => s.accuracy).reduce((a, b) => a + b) / sessions.length;
+    final latest = sessions.isEmpty ? 0.0 : sessions.last.accuracy;
+    final isPositive = improvement.percentageChange >= 0;
 
     return Container(
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppColors.primary, Color(0xFF2563EB)],
+        gradient: LinearGradient(
+          colors: isPositive
+              ? [const Color(0xFF0EA5E9), const Color(0xFF2563EB), const Color(0xFF4F46E5)]
+              : [const Color(0xFFF59E0B), const Color(0xFFF97316), const Color(0xFFEF4444)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: (isPositive ? const Color(0xFF2563EB) : const Color(0xFFF97316)).withValues(alpha: 0.25),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       padding: const EdgeInsets.all(20),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Overall Improvement', style: TextStyle(fontSize: 12, color: Colors.white70)),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${isPositive ? '+' : ''}${_improvement.percentageChange.toStringAsFixed(0)}%',
-                    style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white),
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  _improvementStat('First 5 sessions', _improvement.firstAvg),
-                  const SizedBox(height: 8),
-                  _improvementStat('Last 5 sessions', _improvement.lastAvg),
-                ],
+              const Text('Performance Spectrum', style: TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w500, letterSpacing: 0.3)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isPositive ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                      size: 14,
+                      color: isPositive ? const Color(0xFF4ADE80) : const Color(0xFFF87171),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${isPositive ? '+' : ''}${improvement.percentageChange.toStringAsFixed(0)}%',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: isPositive ? const Color(0xFF4ADE80) : const Color(0xFFF87171)),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 24),
+          _spectrumBar('Personal Best', best, best, Icons.emoji_events_rounded, const Color(0xFFFCD34D)),
+          const SizedBox(height: 18),
+          _spectrumBar('Your Average', avg, best, Icons.analytics_rounded, Colors.white),
+          const SizedBox(height: 18),
+          _spectrumBar('Latest Session', latest, best, Icons.flash_on_rounded, const Color(0xFFA5F3FC)),
+          const SizedBox(height: 20),
           const Divider(color: Colors.white24),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Row(
             children: [
               Icon(
                 isPositive ? Icons.trending_up_rounded : Icons.trending_down_rounded,
                 color: isPositive ? Colors.greenAccent : Colors.redAccent,
-                size: 18,
+                size: 16,
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   isPositive
-                      ? "You're improving! Keep practicing consistently."
-                      : "Keep going! Consistent practice leads to improvement.",
+                      ? "You're on an upward trajectory. Keep the momentum!"
+                      : "Every expert was once a beginner. Stay consistent!",
                   style: const TextStyle(fontSize: 12, color: Colors.white70),
                 ),
               ),
@@ -207,20 +311,79 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
     );
   }
 
-  Widget _improvementStat(String label, double value) {
+  Widget _spectrumBar(String label, double value, double max, IconData icon, Color accent) {
+    final pct = max > 0 ? (value / max).clamp(0.05, 1.0) : 0.05;
+
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 11, color: Colors.white54)),
-        const SizedBox(height: 2),
-        Text('${value.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+        Row(
+          children: [
+            Icon(icon, color: accent, size: 16),
+            const SizedBox(width: 8),
+            Text(label, style: TextStyle(fontSize: 12, color: accent.withValues(alpha: 0.9), fontWeight: FontWeight.w500)),
+            const Spacer(),
+            Text('${value.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: pct),
+            duration: const Duration(milliseconds: 1400),
+            curve: Curves.easeOutCubic,
+            builder: (context, t, child) {
+              return Stack(
+                children: [
+                  Container(height: 10, color: Colors.white.withValues(alpha: 0.12)),
+                  FractionallySizedBox(
+                    widthFactor: t,
+                    child: Container(
+                      height: 10,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: [accent.withValues(alpha: 0.7), accent]),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
       ],
     );
   }
+}
 
-  // ── Accuracy Trend Chart ──────────────────────────────
-  Widget _buildAccuracyTrendChart() {
-    return _card(
+// ═══════════════════════════════════════════════════════
+// 2. ACCURACY TREND — Hero Expand + Drawing Animation
+// ═══════════════════════════════════════════════════════
+
+class _AccuracyTrendCard extends StatelessWidget {
+  final List<SessionData> sessions;
+  const _AccuracyTrendCard({required this.sessions});
+
+  void _openFullScreen(BuildContext context) {
+    Navigator.of(context).push(PageRouteBuilder(
+      opaque: false,
+      transitionDuration: const Duration(milliseconds: 400),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return FadeTransition(
+          opacity: animation,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.92, end: 1.0).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+            child: _FullScreenAccuracyChart(sessions: sessions),
+          ),
+        );
+      },
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _CardShell(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -228,152 +391,453 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('Accuracy Trend', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(20)),
-                child: const Text('↗ Improving', style: TextStyle(fontSize: 11, color: Color(0xFF16A34A), fontWeight: FontWeight.w600)),
+              GestureDetector(
+                onTap: () => _openFullScreen(context),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(20)),
+                  child: const Text('↗ Improving', style: TextStyle(fontSize: 11, color: Color(0xFF16A34A), fontWeight: FontWeight.w600)),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          SizedBox(
-            height: 200,
-            child: LineChart(
-              LineChartData(
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  horizontalInterval: 20,
-                  getDrawingHorizontalLine: (value) => const FlLine(color: Color(0xFFF1F5F9), strokeWidth: 1),
-                ),
-                titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      interval: 20,
-                      reservedSize: 32,
-                      getTitlesWidget: (value, meta) => Text('${value.toInt()}%', style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                    ),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      interval: (_sessions.length / 4).ceil().toDouble(),
-                      reservedSize: 24,
-                      getTitlesWidget: (value, meta) {
-                        final idx = value.toInt();
-                        if (idx >= 0 && idx < _sessions.length) {
-                          return Text('S${idx + 1}', style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)));
-                        }
-                        return const SizedBox.shrink();
-                      },
-                    ),
-                  ),
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                ),
-                borderData: FlBorderData(show: false),
-                minX: 0,
-                maxX: (_sessions.length - 1).toDouble(),
-                minY: 0,
-                maxY: 100,
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: _sessions.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.accuracy)).toList(),
-                    isCurved: true,
-                    gradient: const LinearGradient(colors: [Color(0xFF2563EB), Color(0xFF3B82F6)]),
-                    barWidth: 3,
-                    isStrokeCapRound: true,
-                    dotData: FlDotData(
-                      show: true,
-                      getDotPainter: (spot, percent, bar, index) {
-                        final isLast = index == _sessions.length - 1;
-                        return FlDotCirclePainter(
-                          radius: isLast ? 5 : 4,
-                          color: isLast ? const Color(0xFF16A34A) : const Color(0xFF2563EB),
-                          strokeWidth: 2,
-                          strokeColor: Colors.white,
-                        );
-                      },
-                    ),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      gradient: LinearGradient(
-                        colors: [const Color(0xFF2563EB).withValues(alpha: 0.2), const Color(0xFF2563EB).withValues(alpha: 0)],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                      ),
-                    ),
-                  ),
-                ],
-                lineTouchData: LineTouchData(
-                  touchTooltipData: LineTouchTooltipData(
-                    getTooltipColor: (touchedSpot) => const Color(0xFF1E293B),
-                    getTooltipItems: (touchedSpots) => touchedSpots.map((spot) {
-                      return LineTooltipItem('${spot.y.toStringAsFixed(1)}%', const TextStyle(color: Colors.white, fontSize: 12));
-                    }).toList(),
-                  ),
+          GestureDetector(
+            onTap: () => _openFullScreen(context),
+            child: Hero(
+              tag: 'accuracyChartMini',
+              child: Material(
+                color: Colors.transparent,
+                child: SizedBox(
+                  height: 200,
+                  child: _AnimatedAccuracyLineChart(sessions: sessions, isFullScreen: false),
                 ),
               ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.touch_app_rounded, size: 13, color: Colors.grey.shade400),
+                const SizedBox(width: 4),
+                Text('Tap to expand full screen', style: TextStyle(fontSize: 10, color: Colors.grey.shade400)),
+              ],
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  // ── Score by Mode ─────────────────────────────────────
-  Widget _buildScoreByMode() {
-    final modes = [
-      _ModeScore('Public Speaking', _modeScores['public_speaking'] ?? 0, AppColors.primary),
-      _ModeScore('Daily Conversation', _modeScores['daily_conversation'] ?? 0, AppColors.accent),
-      _ModeScore('Script-Based', _modeScores['script_based'] ?? 0, AppColors.success),
-    ];
+class _AnimatedAccuracyLineChart extends StatelessWidget {
+  final List<SessionData> sessions;
+  final bool isFullScreen;
+  const _AnimatedAccuracyLineChart({required this.sessions, this.isFullScreen = false});
 
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Score by Mode', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-          const SizedBox(height: 16),
-          ...modes.map((m) => _modeBar(m)),
-        ],
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 1600),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, child) {
+        final visibleCount = (sessions.length * t).ceil().clamp(1, sessions.length);
+        final visibleSessions = sessions.sublist(0, visibleCount);
+
+        return LineChart(
+          LineChartData(
+            gridData: FlGridData(
+              show: true,
+              drawVerticalLine: false,
+              horizontalInterval: 20,
+              getDrawingHorizontalLine: (value) => const FlLine(color: Color(0xFFF1F5F9), strokeWidth: 1),
+            ),
+            titlesData: FlTitlesData(
+              leftTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  interval: 20,
+                  reservedSize: 32,
+                  getTitlesWidget: (value, meta) => Text('${value.toInt()}%', style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                ),
+              ),
+              bottomTitles: AxisTitles(
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  interval: (sessions.length / 4).ceil().toDouble(),
+                  reservedSize: 24,
+                  getTitlesWidget: (value, meta) {
+                    final idx = value.toInt();
+                    if (idx >= 0 && idx < sessions.length) {
+                      return Text('S${idx + 1}', style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)));
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
+              ),
+              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            ),
+            borderData: FlBorderData(show: false),
+            minX: 0,
+            maxX: (sessions.length - 1).toDouble(),
+            minY: 0,
+            maxY: 100,
+            lineBarsData: [
+              LineChartBarData(
+                spots: visibleSessions.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.accuracy)).toList(),
+                isCurved: true,
+                gradient: const LinearGradient(colors: [Color(0xFF2563EB), Color(0xFF3B82F6)]),
+                barWidth: isFullScreen ? 4 : 3,
+                isStrokeCapRound: true,
+                dotData: FlDotData(
+                  show: true,
+                  getDotPainter: (spot, percent, bar, index) {
+                    final isLast = index == visibleSessions.length - 1;
+                    return FlDotCirclePainter(
+                      radius: isLast ? (isFullScreen ? 6 : 5) : (isFullScreen ? 5 : 4),
+                      color: isLast ? const Color(0xFF16A34A) : const Color(0xFF2563EB),
+                      strokeWidth: 2,
+                      strokeColor: Colors.white,
+                    );
+                  },
+                ),
+                belowBarData: BarAreaData(
+                  show: true,
+                  gradient: LinearGradient(
+                    colors: [const Color(0xFF2563EB).withValues(alpha: 0.25), const Color(0xFF2563EB).withValues(alpha: 0)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+              ),
+            ],
+            lineTouchData: LineTouchData(
+              touchTooltipData: LineTouchTooltipData(
+                getTooltipColor: (touchedSpot) => const Color(0xFF1E293B),
+                getTooltipItems: (touchedSpots) => touchedSpots.map((spot) {
+                  return LineTooltipItem('${spot.y.toStringAsFixed(1)}%', const TextStyle(color: Colors.white, fontSize: 12));
+                }).toList(),
+              ),
+            ),
+          ),
+          duration: Duration.zero,
+        );
+      },
+    );
+  }
+}
+
+class _FullScreenAccuracyChart extends StatelessWidget {
+  final List<SessionData> sessions;
+  const _FullScreenAccuracyChart({required this.sessions});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0F172A),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Accuracy Trend', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white)),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              Text('${sessions.length} sessions tracked', style: const TextStyle(fontSize: 12, color: Colors.white54)),
+              const SizedBox(height: 32),
+              Expanded(
+                child: sessions.length >= 2
+                    ? Hero(
+                        tag: 'accuracyChartMini',
+                        child: Material(
+                          color: Colors.transparent,
+                          child: _AnimatedAccuracyLineChart(sessions: sessions, isFullScreen: true),
+                        ),
+                      )
+                    : const Center(child: Text('Not enough sessions yet', style: TextStyle(color: Colors.white54))),
+              ),
+              const SizedBox(height: 20),
+              _sessionTimeline(sessions),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _modeBar(_ModeScore mode) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+  Widget _sessionTimeline(List<SessionData> sessions) {
+    return SizedBox(
+      height: 60,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: sessions.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (context, idx) {
+          final s = sessions[idx];
+          return Container(
+            width: 80,
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E293B),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF334155)),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text('S${idx + 1}', style: const TextStyle(fontSize: 10, color: Colors.white38)),
+                Text('${s.accuracy.toStringAsFixed(0)}%', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white)),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// 3. SCORE BY MODE — Clean Dropdown, Single Reveal
+// ═══════════════════════════════════════════════════════
+
+class _ModeMeta {
+  final String key;
+  final String label;
+  final Color color;
+  final IconData icon;
+  const _ModeMeta(this.key, this.label, this.color, this.icon);
+}
+
+const List<_ModeMeta> _modeMetas = [
+  _ModeMeta('public_speaking', 'Public Speaking', AppColors.primary, Icons.mic_rounded),
+  _ModeMeta('daily_conversation', 'Daily Conversation', AppColors.accent, Icons.chat_bubble_rounded),
+  _ModeMeta('script_based', 'Script-Based', AppColors.success, Icons.description_rounded),
+];
+
+class _ModeScoreCard extends StatefulWidget {
+  final Map<String, double> modeScores;
+  const _ModeScoreCard({required this.modeScores});
+
+  @override
+  State<_ModeScoreCard> createState() => _ModeScoreCardState();
+}
+
+class _ModeScoreCardState extends State<_ModeScoreCard> {
+  String _selectedKey = _modeMetas.first.key;
+
+  _ModeMeta get _selectedMeta => _modeMetas.firstWhere((m) => m.key == _selectedKey);
+
+  String _rankLabel(double score) {
+    if (score >= 85) return 'Excellent performance';
+    if (score >= 70) return 'Good, keep practicing';
+    if (score >= 50) return 'Needs more practice';
+    return 'Just getting started';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final score = widget.modeScores[_selectedKey] ?? 0;
+    final meta = _selectedMeta;
+
+    return _CardShell(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(mode.label, style: const TextStyle(fontSize: 13, color: Color(0xFF475569), fontWeight: FontWeight.w500)),
-              Text('${mode.score.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 13, color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+              const Text('Score by Mode', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: meta.color.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: meta.color.withValues(alpha: 0.2)),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _selectedKey,
+                    isDense: true,
+                    icon: Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: meta.color),
+                    style: TextStyle(fontSize: 13, color: meta.color, fontWeight: FontWeight.w700),
+                    dropdownColor: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    items: _modeMetas.map((m) => DropdownMenuItem(
+                      value: m.key,
+                      child: Row(
+                        children: [
+                          Icon(m.icon, size: 16, color: m.color),
+                          const SizedBox(width: 8),
+                          Text(m.label),
+                        ],
+                      ),
+                    )).toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _selectedKey = v);
+                    },
+                  ),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: LinearProgressIndicator(
-              value: mode.score / 100,
-              backgroundColor: const Color(0xFFF1F5F9),
-              valueColor: AlwaysStoppedAnimation<Color>(mode.color),
-              minHeight: 8,
-            ),
+          const SizedBox(height: 24),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 350),
+            transitionBuilder: (child, animation) {
+              return FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween<Offset>(begin: const Offset(0.05, 0), end: Offset.zero).animate(animation),
+                  child: child,
+                ),
+              );
+            },
+            child: _buildModeDetail(meta, score, key: ValueKey(_selectedKey)),
           ),
         ],
       ),
     );
   }
 
-  // ── Error Pie Chart ───────────────────────────────────
-  Widget _buildErrorPieChart() {
-    final total = _errorBreakdown.total;
+  Widget _buildModeDetail(_ModeMeta meta, double score, {required Key key}) {
+    return Column(
+      key: key,
+      children: [
+        Row(
+          children: [
+            _AnimatedGauge(value: score, color: meta.color),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: meta.color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                    child: Text(
+                      meta.label,
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: meta.color),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(_rankLabel(score), style: TextStyle(fontSize: 13, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 6),
+                  Text(
+                    score >= 70
+                        ? 'You are performing well in this mode.'
+                        : 'Focus on this area to boost your overall score.',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _AnimatedGauge extends StatelessWidget {
+  final double value;
+  final Color color;
+  const _AnimatedGauge({required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: (value / 100).clamp(0, 1)),
+      duration: const Duration(milliseconds: 1000),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, child) {
+        return SizedBox(
+          width: 100,
+          height: 100,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              SizedBox(
+                width: 100,
+                height: 100,
+                child: CircularProgressIndicator(
+                  value: 1,
+                  strokeWidth: 10,
+                  backgroundColor: const Color(0xFFF1F5F9),
+                  valueColor: const AlwaysStoppedAnimation(Color(0xFFF1F5F9)),
+                ),
+              ),
+              SizedBox(
+                width: 100,
+                height: 100,
+                child: CircularProgressIndicator(
+                  value: t,
+                  strokeWidth: 10,
+                  backgroundColor: Colors.transparent,
+                  valueColor: AlwaysStoppedAnimation(color),
+                  strokeCap: StrokeCap.round,
+                ),
+              ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('${(t * 100).toStringAsFixed(0)}%', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                  const Text('Score', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// 4. ERROR BREAKDOWN — Tap to Expand Full Screen
+// ═══════════════════════════════════════════════════════
+
+class _ErrorEntry {
+  final String label;
+  final int count;
+  final Color color;
+  const _ErrorEntry(this.label, this.count, this.color);
+}
+
+class _ErrorBreakdownCard extends StatelessWidget {
+  final ErrorBreakdown breakdown;
+  const _ErrorBreakdownCard({required this.breakdown});
+
+  void _openFullScreen(BuildContext context) {
+    Navigator.of(context).push(PageRouteBuilder(
+      opaque: false,
+      transitionDuration: const Duration(milliseconds: 350),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return FadeTransition(
+          opacity: animation,
+          child: _FullScreenErrorBreakdown(breakdown: breakdown),
+        );
+      },
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = breakdown.total;
+
     if (total == 0) {
-      return _card(
+      return _CardShell(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -394,75 +858,92 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
       );
     }
 
-    final sections = [
-      _pieSection('Substitution', _errorBreakdown.substitution, total, const Color(0xFFEF4444)),
-      _pieSection('Omission', _errorBreakdown.deletion, total, const Color(0xFFF59E0B)),
-      _pieSection('Stress', _errorBreakdown.stress, total, const Color(0xFF8B5CF6)),
-      _pieSection('Insertion', _errorBreakdown.insertion, total, const Color(0xFF06B6D4)),
+    final entries = [
+      _ErrorEntry('Substitution', breakdown.substitution, const Color(0xFFEF4444)),
+      _ErrorEntry('Omission', breakdown.deletion, const Color(0xFFF59E0B)),
+      _ErrorEntry('Stress', breakdown.stress, const Color(0xFF8B5CF6)),
+      _ErrorEntry('Insertion', breakdown.insertion, const Color(0xFF06B6D4)),
     ];
 
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Error Breakdown', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              SizedBox(
-                width: 120,
-                height: 120,
-                child: PieChart(
-                  PieChartData(
-                    sections: sections,
-                    centerSpaceRadius: 35,
-                    sectionsSpace: 2,
+    return GestureDetector(
+      onTap: () => _openFullScreen(context),
+      child: _CardShell(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Error Breakdown', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(20)),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.open_in_full_rounded, size: 12, color: Colors.grey.shade500),
+                      const SizedBox(width: 4),
+                      Text('Tap to expand', style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
+                    ],
                   ),
                 ),
-              ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: Column(
-                  children: [
-                    _pieLegend('Substitution', _errorBreakdown.substitution, total, const Color(0xFFEF4444)),
-                    _pieLegend('Omission', _errorBreakdown.deletion, total, const Color(0xFFF59E0B)),
-                    _pieLegend('Stress', _errorBreakdown.stress, total, const Color(0xFF8B5CF6)),
-                    _pieLegend('Insertion', _errorBreakdown.insertion, total, const Color(0xFF06B6D4)),
-                  ],
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                SizedBox(
+                  width: 130,
+                  height: 130,
+                  child: PieChart(
+                    PieChartData(
+                      sections: entries.map((e) => _pieSection(e, total)).toList(),
+                      centerSpaceRadius: 34,
+                      sectionsSpace: 2,
+                    ),
+                    swapAnimationDuration: const Duration(milliseconds: 600),
+                    swapAnimationCurve: Curves.easeOutCubic,
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ],
+                const SizedBox(width: 20),
+                Expanded(
+                  child: Column(
+                    children: entries.map((e) => _pieLegend(e, total)).toList(),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  PieChartSectionData _pieSection(String label, int count, int total, Color color) {
-    final pct = total > 0 ? (count / total * 100) : 0;
+  PieChartSectionData _pieSection(_ErrorEntry e, int total) {
+    final pct = total > 0 ? (e.count / total * 100) : 0;
     return PieChartSectionData(
-      value: count.toDouble(),
+      value: e.count.toDouble(),
       title: pct >= 8 ? '${pct.toStringAsFixed(0)}%' : '',
-      radius: 40,
+      radius: 42,
       titleStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
-      color: color,
+      color: e.color,
     );
   }
 
-  Widget _pieLegend(String label, int count, int total, Color color) {
-    final pct = total > 0 ? (count / total * 100).toStringAsFixed(0) : '0';
+  Widget _pieLegend(_ErrorEntry e, int total) {
+    final pct = total > 0 ? (e.count / total * 100).toStringAsFixed(0) : '0';
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
-          Container(width: 10, height: 10, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3))),
+          Container(width: 10, height: 10, decoration: BoxDecoration(color: e.color, borderRadius: BorderRadius.circular(3))),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF475569), fontWeight: FontWeight.w500)),
-                Text('$count errors ($pct%)', style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                Text(e.label, style: const TextStyle(fontSize: 12, color: Color(0xFF475569), fontWeight: FontWeight.w500)),
+                Text('${e.count} errors ($pct%)', style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
               ],
             ),
           ),
@@ -470,11 +951,163 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
       ),
     );
   }
+}
 
-  // ── Top Mispronounced Words (Top 10) ──────────────────
-  Widget _buildTopMispronouncedWords() {
-    if (_topErrors.isEmpty) {
-      return _card(
+class _FullScreenErrorBreakdown extends StatelessWidget {
+  final ErrorBreakdown breakdown;
+  const _FullScreenErrorBreakdown({required this.breakdown});
+
+  @override
+  Widget build(BuildContext context) {
+    final total = breakdown.total;
+    final entries = [
+      _ErrorEntry('Substitution', breakdown.substitution, const Color(0xFFEF4444)),
+      _ErrorEntry('Omission', breakdown.deletion, const Color(0xFFF59E0B)),
+      _ErrorEntry('Stress', breakdown.stress, const Color(0xFF8B5CF6)),
+      _ErrorEntry('Insertion', breakdown.insertion, const Color(0xFF06B6D4)),
+    ];
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF0F172A),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Error Breakdown', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white)),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              Text('$total total errors analyzed', style: const TextStyle(fontSize: 12, color: Colors.white54)),
+              const SizedBox(height: 32),
+              Expanded(
+                child: Column(
+                  children: entries.map((e) => _detailBar(e, total)).toList(),
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                height: 200,
+                child: PieChart(
+                  PieChartData(
+                    sections: entries.map((e) => _pieSection(e, total)).toList(),
+                    centerSpaceRadius: 50,
+                    sectionsSpace: 3,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _detailBar(_ErrorEntry e, int total) {
+    final pct = total > 0 ? (e.count / total).clamp(0.0, 1.0) : 0.0;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(e.label, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+              Text('${e.count}', style: TextStyle(color: e.color, fontSize: 14, fontWeight: FontWeight.w700)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: pct),
+              duration: const Duration(milliseconds: 1000),
+              curve: Curves.easeOutCubic,
+              builder: (context, t, child) {
+                return LinearProgressIndicator(
+                  value: t,
+                  backgroundColor: Colors.white.withValues(alpha: 0.08),
+                  valueColor: AlwaysStoppedAnimation(e.color),
+                  minHeight: 12,
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  PieChartSectionData _pieSection(_ErrorEntry e, int total) {
+    final pct = total > 0 ? (e.count / total * 100) : 0;
+    return PieChartSectionData(
+      value: e.count.toDouble(),
+      title: '${pct.toStringAsFixed(0)}%',
+      radius: 60,
+      titleStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+      color: e.color,
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// 5. TOP MISPRONOUNCED WORDS — Sort + Count Dropdown
+// ═══════════════════════════════════════════════════════
+
+class _TopErrorsCard extends StatefulWidget {
+  final List<WordError> errors;
+  const _TopErrorsCard({required this.errors});
+
+  @override
+  State<_TopErrorsCard> createState() => _TopErrorsCardState();
+}
+
+class _TopErrorsCardState extends State<_TopErrorsCard> {
+  int _limit = 5;
+  String _sortBy = 'Frequency'; // Frequency | Rate | A-Z
+
+  static const List<_WordColor> _colors = [
+    _WordColor(Color(0xFFEF4444), Color(0xFFFEF2F2), Color(0xFFFECACA)),
+    _WordColor(Color(0xFFF97316), Color(0xFFFFF7ED), Color(0xFFFED7AA)),
+    _WordColor(Color(0xFFEAB308), Color(0xFFFFFBEB), Color(0xFFFDE68A)),
+    _WordColor(Color(0xFF22C55E), Color(0xFFF0FDF4), Color(0xFFBBF7D0)),
+    _WordColor(Color(0xFF3B82F6), Color(0xFFEFF6FF), Color(0xFFBFDBFE)),
+    _WordColor(Color(0xFF8B5CF6), Color(0xFFF5F3FF), Color(0xFFDDD6FE)),
+    _WordColor(Color(0xFFEC4899), Color(0xFFFDF2F8), Color(0xFFFBCFE8)),
+    _WordColor(Color(0xFF14B8A6), Color(0xFFF0FDFA), Color(0xFF99F6E4)),
+    _WordColor(Color(0xFF6366F1), Color(0xFFEEF2FF), Color(0xFFC7D2FE)),
+    _WordColor(Color(0xFF84CC16), Color(0xFFF7FEE7), Color(0xFFD9F99D)),
+  ];
+
+  List<WordError> get _sortedErrors {
+    final list = List<WordError>.from(widget.errors);
+    switch (_sortBy) {
+      case 'Rate':
+        list.sort((a, b) => b.errorRate.compareTo(a.errorRate));
+        break;
+      case 'A-Z':
+        list.sort((a, b) => a.word.compareTo(b.word));
+        break;
+      case 'Frequency':
+      default:
+        list.sort((a, b) => b.errorCount.compareTo(a.errorCount));
+        break;
+    }
+    return list;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.errors.isEmpty) {
+      return _CardShell(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -495,20 +1128,14 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
       );
     }
 
-    final colors = [
-      const _WordColor(Color(0xFFEF4444), Color(0xFFFEF2F2), Color(0xFFFECACA)),
-      const _WordColor(Color(0xFFF97316), Color(0xFFFFF7ED), Color(0xFFFED7AA)),
-      const _WordColor(Color(0xFFEAB308), Color(0xFFFFFBEB), Color(0xFFFDE68A)),
-      const _WordColor(Color(0xFF22C55E), Color(0xFFF0FDF4), Color(0xFFBBF7D0)),
-      const _WordColor(Color(0xFF3B82F6), Color(0xFFEFF6FF), Color(0xFFBFDBFE)),
-      const _WordColor(Color(0xFF8B5CF6), Color(0xFFF5F3FF), Color(0xFFDDD6FE)),
-      const _WordColor(Color(0xFFEC4899), Color(0xFFFDF2F8), Color(0xFFFBCFE8)),
-      const _WordColor(Color(0xFF14B8A6), Color(0xFFF0FDFA), Color(0xFF99F6E4)),
-      const _WordColor(Color(0xFF6366F1), Color(0xFFEEF2FF), Color(0xFFC7D2FE)),
-      const _WordColor(Color(0xFF84CC16), Color(0xFFF7FEE7), Color(0xFFD9F99D)),
-    ];
+    final sorted = _sortedErrors;
+    final maxAvailable = sorted.length;
+    final optionSet = <int>{3, 5, 10, maxAvailable}..removeWhere((o) => o > maxAvailable);
+    final options = optionSet.toList()..sort();
+    final dropdownValue = options.contains(_limit) ? _limit : options.last;
+    final visible = sorted.take(dropdownValue).toList();
 
-    return _card(
+    return _CardShell(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -516,19 +1143,69 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('Top Mispronounced Words', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: const Color(0xFFFEF2F2), borderRadius: BorderRadius.circular(20)),
-                child: const Text('Focus here', style: TextStyle(fontSize: 11, color: Color(0xFFEF4444), fontWeight: FontWeight.w600)),
+              Row(
+                children: [
+                  // Sort dropdown
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.divider)),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _sortBy,
+                        isDense: true,
+                        icon: const Icon(Icons.sort_rounded, size: 14, color: Color(0xFF64748B)),
+                        style: const TextStyle(fontSize: 11, color: AppColors.textPrimary, fontWeight: FontWeight.w600),
+                        items: const [
+                          DropdownMenuItem(value: 'Frequency', child: Text('By Frequency')),
+                          DropdownMenuItem(value: 'Rate', child: Text('By Error Rate')),
+                          DropdownMenuItem(value: 'A-Z', child: Text('A-Z')),
+                        ],
+                        onChanged: (v) {
+                          if (v != null) setState(() => _sortBy = v);
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Count dropdown
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                    decoration: BoxDecoration(color: const Color(0xFFFEF2F2), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFFECACA))),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<int>(
+                        value: dropdownValue,
+                        isDense: true,
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Color(0xFFEF4444)),
+                        style: const TextStyle(fontSize: 11, color: Color(0xFFEF4444), fontWeight: FontWeight.w600),
+                        items: options.map((o) => DropdownMenuItem(value: o, child: Text('Top $o'))).toList(),
+                        onChanged: (v) {
+                          if (v != null) setState(() => _limit = v);
+                        },
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
           const SizedBox(height: 16),
-          ..._topErrors.asMap().entries.map((entry) {
+          ...visible.asMap().entries.map((entry) {
             final idx = entry.key;
             final word = entry.value;
-            final c = colors[idx.clamp(0, colors.length - 1)];
-            return _wordErrorCard(word, idx + 1, c);
+            final c = _colors[idx % _colors.length];
+            return TweenAnimationBuilder<double>(
+              key: ValueKey('${word.word}_$_sortBy'),
+              tween: Tween(begin: 0, end: 1),
+              duration: Duration(milliseconds: 300 + idx * 80),
+              curve: Curves.easeOutCubic,
+              builder: (context, t, child) {
+                return Opacity(
+                  opacity: t,
+                  child: Transform.translate(offset: Offset(0, (1 - t) * 12), child: child),
+                );
+              },
+              child: _wordErrorCard(word, idx + 1, c),
+            );
           }),
         ],
       ),
@@ -570,24 +1247,174 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
       ),
     );
   }
+}
 
-  // ── Stats Grid ────────────────────────────────────────
-  Widget _buildStatsGrid() {
-    final stats = [
-      _GridStat('${_totalStats.sessions}', 'Total Sessions', AppColors.primary),
-      _GridStat('${_totalStats.words}', 'Words Practiced', AppColors.accent),
-      _GridStat('${_totalStats.errors}', 'Errors Corrected', AppColors.success),
-      _GridStat('${(_totalStats.minutes / 60).toStringAsFixed(1)}h', 'Practice Time', AppColors.brandBlue),
+// ═══════════════════════════════════════════════════════
+// 6. STATS — Grid / List / Carousel Toggle
+// ═══════════════════════════════════════════════════════
+
+class _GridStat {
+  final num rawValue;
+  final bool isDouble;
+  final String suffix;
+  final String label;
+  final Color color;
+  final IconData icon;
+  _GridStat({
+    required this.rawValue,
+    this.isDouble = false,
+    this.suffix = '',
+    required this.label,
+    required this.color,
+    required this.icon,
+  });
+}
+
+class _StatsGridCard extends StatefulWidget {
+  final TotalStats stats;
+  const _StatsGridCard({required this.stats});
+
+  @override
+  State<_StatsGridCard> createState() => _StatsGridCardState();
+}
+
+class _StatsGridCardState extends State<_StatsGridCard> {
+  String _view = 'Grid';
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.stats;
+    final items = [
+      _GridStat(rawValue: s.sessions, label: 'Total Sessions', color: AppColors.primary, icon: Icons.event_available_rounded),
+      _GridStat(rawValue: s.words, label: 'Words Practiced', color: AppColors.accent, icon: Icons.record_voice_over_rounded),
+      _GridStat(rawValue: s.errors, label: 'Errors Corrected', color: AppColors.success, icon: Icons.check_circle_outline_rounded),
+      _GridStat(rawValue: s.minutes / 60, isDouble: true, suffix: 'h', label: 'Practice Time', color: AppColors.brandBlue, icon: Icons.timer_outlined),
     ];
 
+    return _CardShell(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Your Stats', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(20)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: ['Grid', 'List', 'Carousel'].map((v) {
+                    final isActive = _view == v;
+                    return GestureDetector(
+                      onTap: () => setState(() => _view = v),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isActive ? Colors.white : Colors.transparent,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: isActive ? [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 4, offset: const Offset(0, 1))] : null,
+                        ),
+                        child: Text(
+                          v,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                            color: isActive ? AppColors.textPrimary : const Color(0xFF94A3B8),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 350),
+            transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
+            child: _buildView(items),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildView(List<_GridStat> items) {
+    switch (_view) {
+      case 'List':
+        return _listLayout(items);
+      case 'Carousel':
+        return _carouselLayout(items);
+      case 'Grid':
+      default:
+        return _gridLayout(items);
+    }
+  }
+
+  Widget _gridLayout(List<_GridStat> items) {
     return GridView.count(
+      key: const ValueKey('grid'),
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       crossAxisCount: 2,
       mainAxisSpacing: 12,
       crossAxisSpacing: 12,
-      childAspectRatio: 1.4,
-      children: stats.map((s) => _gridItem(s)).toList(),
+      childAspectRatio: 1.3,
+      children: items.map((s) => _gridItem(s)).toList(),
+    );
+  }
+
+  Widget _listLayout(List<_GridStat> items) {
+    return Column(
+      key: const ValueKey('list'),
+      children: items.map((s) => _listItem(s)).toList(),
+    );
+  }
+
+  Widget _carouselLayout(List<_GridStat> items) {
+    return SizedBox(
+      key: const ValueKey('carousel'),
+      height: 160,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (context, idx) {
+          final stat = items[idx];
+          return Container(
+            width: 140,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: stat.color.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: stat.color.withValues(alpha: 0.15)),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: stat.color.withValues(alpha: 0.12), shape: BoxShape.circle),
+                  child: Icon(stat.icon, size: 22, color: stat.color),
+                ),
+                const SizedBox(height: 12),
+                _AnimatedCounter(
+                  value: stat.rawValue,
+                  isDouble: stat.isDouble,
+                  suffix: stat.suffix,
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: stat.color),
+                ),
+                const SizedBox(height: 4),
+                Text(stat.label, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)), textAlign: TextAlign.center),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -599,84 +1426,62 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
         border: Border.all(color: AppColors.divider),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 2))],
       ),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(stat.value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: stat.color)),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: stat.color.withValues(alpha: 0.1), shape: BoxShape.circle),
+            child: Icon(stat.icon, size: 16, color: stat.color),
+          ),
+          const SizedBox(height: 8),
+          _AnimatedCounter(
+            value: stat.rawValue,
+            isDouble: stat.isDouble,
+            suffix: stat.suffix,
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: stat.color),
+          ),
           const SizedBox(height: 4),
-          Text(stat.label, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+          Text(stat.label, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)), textAlign: TextAlign.center),
         ],
       ),
     );
   }
 
-  // // ── SDG 4 Badge ───────────────────────────────────────
-  // Widget _buildSDGBadge() {
-  //   return Container(
-  //     decoration: BoxDecoration(
-  //       gradient: const LinearGradient(colors: [Color(0xFF0F6E56), Color(0xFF16A34A)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-  //       borderRadius: BorderRadius.circular(16),
-  //     ),
-  //     padding: const EdgeInsets.all(16),
-  //     child: const Column(
-  //       children: [
-  //         Text('🌍 Supporting SDG 4: Quality Education', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
-  //         SizedBox(height: 4),
-  //         Text('Your progress data helps improve learning outcomes worldwide', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: Colors.white70)),
-  //       ],
-  //     ),
-  //   );
-  // }
-
-  // ── Share ─────────────────────────────────────────────
-  void _shareProgress() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 20),
-            const Text('Share Your Progress', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(Icons.image, color: AppColors.primary),
-              title: const Text('Share as Image'),
-              onTap: () => Navigator.pop(ctx),
-            ),
-            ListTile(
-              leading: const Icon(Icons.text_snippet, color: AppColors.primary),
-              title: const Text('Share as Text'),
-              onTap: () => Navigator.pop(ctx),
-            ),
-            const SizedBox(height: 16),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Helpers ───────────────────────────────────────────
-  Widget _card({required Widget child}) {
+  Widget _listItem(_GridStat stat) {
     return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.divider),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2))],
       ),
-      padding: const EdgeInsets.all(16),
-      child: child,
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: stat.color.withValues(alpha: 0.1), shape: BoxShape.circle),
+            child: Icon(stat.icon, size: 18, color: stat.color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Text(stat.label, style: const TextStyle(fontSize: 13, color: Color(0xFF475569), fontWeight: FontWeight.w500))),
+          _AnimatedCounter(
+            value: stat.rawValue,
+            isDouble: stat.isDouble,
+            suffix: stat.suffix,
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: stat.color),
+          ),
+        ],
+      ),
     );
   }
-}
+}  
 
-// ── Data Models ─────────────────────────────────────────
+
+
+// ── Data Models (unchanged — match backend contract) ────
 
 class SessionData {
   final int id;
@@ -764,23 +1569,9 @@ class TotalStats {
       );
 }
 
-class _ModeScore {
-  final String label;
-  final double score;
-  final Color color;
-  _ModeScore(this.label, this.score, this.color);
-}
-
 class _WordColor {
   final Color accent;
   final Color bg;
   final Color border;
   const _WordColor(this.accent, this.bg, this.border);
-}
-
-class _GridStat {
-  final String value;
-  final String label;
-  final Color color;
-  _GridStat(this.value, this.label, this.color);
 }
