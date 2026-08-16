@@ -26,9 +26,6 @@ enum ScriptMode {
       values.firstWhere((e) => e.value == v, orElse: () => scriptBased);
 }
 
-// Proficiency badge colors now progress through the app's actual theme
-// palette (teal accent -> olive primary) instead of arbitrary
-// green/amber/orange/purple/blue that didn't match the Figma design.
 enum ProficiencyLevel {
   beginner('beginner', 'Beginner', AppColors.accentLight),
   intermediate('intermediate', 'Intermediate', AppColors.accent),
@@ -60,7 +57,6 @@ class ScriptSelectionScreen extends StatefulWidget {
     this.preselectedLevel,
   });
 
-  // Factory constructor for pre-filtered navigation
   static Widget withFilters({
     required String preselectedMode,
     required String preselectedLevel,
@@ -78,8 +74,6 @@ class ScriptSelectionScreen extends StatefulWidget {
 class _ScriptSelectionState extends State<ScriptSelectionScreen>
     with SingleTickerProviderStateMixin {
   // ── Colors ────────────────────────────────────────────
-  // Was AppColors.brandBlue — a leftover color that didn't match the
-  // app's actual olive/teal Figma theme. Now uses the real theme primary.
   static const _primary = AppColors.primary;
   static const _bg = AppColors.screenBackground;
   static const _cardBg = AppColors.surface;
@@ -90,9 +84,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
   // ── State ─────────────────────────────────────────────
   late TabController _tabs;
 
-  // Step tracking
-  int _currentStep = 0; // 0=Mode, 1=Level, 2=Scripts
-
+  int _currentStep = 0;
   ScriptMode? _selectedMode;
   ProficiencyLevel? _selectedLevel;
 
@@ -119,7 +111,6 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
     super.initState();
     _tabs = TabController(length: 2, vsync: this);
 
-    // Apply preselected filters if provided
     if (widget.preselectedMode != null) {
       try {
         _selectedMode = ScriptMode.fromValue(widget.preselectedMode!);
@@ -139,7 +130,11 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
       }
     }
 
-    _loadScripts();
+    if (_currentStep == 2 && !_isScriptBasedMode) {
+      _loadRandomScripts();
+    } else {
+      _loadScripts();
+    }
   }
 
   @override
@@ -184,6 +179,55 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
     });
   }
 
+  static const int _randomBatchSize = 5;
+
+  Future<void> _loadRandomScripts({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+
+    final result = await ApiService.getRotatedScripts(
+      mode: _selectedMode?.value,
+      level: _selectedLevel?.value,
+      count: _randomBatchSize,
+    );
+
+    if (!mounted) return;
+
+    if (result['error'] != null) {
+      setState(() {
+        _loading = false;
+        _error = result['error'].toString();
+      });
+      return;
+    }
+
+    setState(() {
+      _loading = false;
+      _error = null;
+      _builtinScripts =
+          List<Map<String, dynamic>>.from(result['scripts'] ?? []);
+    });
+  }
+
+  Future<void> _refreshBuiltin() {
+    if (_isScriptBasedMode) {
+      return _loadScripts(silent: true);
+    }
+    return _loadRandomScripts(silent: true);
+  }
+
+  void _retryLoad() {
+    if (_isScriptBasedMode) {
+      _loadScripts();
+    } else {
+      _loadRandomScripts();
+    }
+  }
+
   // ── Navigation Helpers ──────────────────────────────
   void _selectMode(ScriptMode mode) {
     setState(() {
@@ -197,7 +241,12 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
       _selectedLevel = level;
       _currentStep = 2;
     });
-    _loadScripts();
+
+    if (_isScriptBasedMode) {
+      _loadScripts();
+    } else {
+      _loadRandomScripts();
+    }
   }
 
   void _goBack() {
@@ -336,17 +385,22 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
           title: const Text('Select Difficulty Level'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: ProficiencyLevel.values
-                .map((l) => RadioListTile<String>(
-                      title: Text(l.label),
-                      value: l.value,
-                      groupValue: selected,
-                      activeColor: _primary,
-                      onChanged: (v) => setLocal(() => selected = v!),
-                    ))
-                .toList(),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 400),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: ProficiencyLevel.values
+                    .map((l) => RadioListTile<String>(
+                          title: Text(l.label),
+                          value: l.value,
+                          groupValue: selected,
+                          activeColor: _primary,
+                          onChanged: (v) => setLocal(() => selected = v!),
+                        ))
+                    .toList(),
+              ),
+            ),
           ),
           actions: [
             TextButton(
@@ -403,6 +457,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                   DropdownButtonFormField<String>(
                     value: _uploadLevel,
                     decoration: _inputDecoration(''),
+                    isExpanded: true,
                     items: ProficiencyLevel.values
                         .map((l) => DropdownMenuItem(
                             value: l.value, child: Text(l.label)))
@@ -427,10 +482,15 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                         children: [
                           Icon(_selectedMode!.icon, size: 16, color: _primary),
                           const SizedBox(width: 8),
-                          Text(_selectedMode!.label,
+                          Flexible(
+                            child: Text(
+                              _selectedMode!.label,
                               style: const TextStyle(
                                   color: _primary,
-                                  fontWeight: FontWeight.w600)),
+                                  fontWeight: FontWeight.w600),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -542,6 +602,22 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
   }
 
   // ═════════════════════════════════════════════════════
+  //  RESPONSIVE HELPERS
+  // ═════════════════════════════════════════════════════
+
+  bool get _isWideScreen {
+    final width = MediaQuery.of(context).size.width;
+    return width > 600;
+  }
+
+  int get _modeGridCrossAxisCount {
+    final width = MediaQuery.of(context).size.width;
+    if (width > 900) return 3;
+    if (width > 600) return 2;
+    return 1;
+  }
+
+  // ═════════════════════════════════════════════════════
   //  BUILD
   // ═════════════════════════════════════════════════════
 
@@ -550,7 +626,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
     return Scaffold(
       backgroundColor: _bg,
       appBar: _buildAppBar(),
-      body: _buildBody(),
+      body: SafeArea(child: _buildBody()),
       floatingActionButton:
           _currentStep == 2 && _isScriptBasedMode ? _buildFab() : null,
     );
@@ -592,7 +668,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
 
     return AppBar(
       title: Text(title,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          overflow: TextOverflow.ellipsis),
       backgroundColor: _primary,
       foregroundColor: Colors.white,
       elevation: 0,
@@ -603,12 +680,12 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
             )
           : null,
       actions: actions,
-        bottom: _currentStep == 2 && _isScriptBasedMode
+      bottom: _currentStep == 2 && _isScriptBasedMode
           ? PreferredSize(
-              preferredSize: const Size.fromHeight(100),
+              preferredSize: const Size.fromHeight(kToolbarHeight + 48),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Search bar
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
                     child: TextField(
@@ -641,7 +718,6 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                       ),
                     ),
                   ),
-                  // Tabs
                   TabBar(
                     controller: _tabs,
                     indicatorColor: Colors.white,
@@ -665,7 +741,21 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
   // ── Body ──────────────────────────────────────────────
   Widget _buildBody() {
     if (_loading && _currentStep == 2) {
-      return const Center(child: CircularProgressIndicator(color: _primary));
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(color: _primary),
+            if (!_isScriptBasedMode) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'Finding fresh scripts for you...',
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              ),
+            ],
+          ],
+        ),
+      );
     }
 
     switch (_currentStep) {
@@ -682,87 +772,104 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
 
   // ── Step 0: Mode Selection ──────────────────────────
   Widget _buildModeSelection() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'What would you like to practice?',
-            style: TextStyle(
-                fontSize: 22, fontWeight: FontWeight.bold, color: _textDark),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Select a practice mode to get started',
-            style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 24),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final crossAxisCount = _modeGridCrossAxisCount;
+        final isGrid = crossAxisCount > 1;
 
-          ...ScriptMode.values.map((mode) => _modeCard(mode)),
-
-          const SizedBox(height: 24),
-
-          if (_selectedMode == ScriptMode.scriptBased) ...[
-            // Quick access to uploaded scripts
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: _cardBg,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _border),
-              ),
-              child: Row(children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: _primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.folder_open_outlined,
-                      color: _primary, size: 24),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('My Scripts',
-                          style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: _textDark)),
-                      Text('${_uploadedScripts.length} uploaded scripts',
-                          style: const TextStyle(
-                              fontSize: 13, color: AppColors.textSecondary)),
-                    ],
-                  ),
-                ),
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _currentStep = 2;
-                      _selectedMode = ScriptMode.scriptBased;
-                      _selectedLevel = null;
-                    });
-                    _loadScripts();
-                  },
-                  child:
-                      const Text('View All', style: TextStyle(color: _primary)),
-                ),
-              ]),
+        if (isGrid) {
+          return GridView.builder(
+            padding: const EdgeInsets.all(20),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              childAspectRatio: 1.4,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
             ),
-          ],
-        ],
-      ),
+            itemCount: ScriptMode.values.length,
+            itemBuilder: (ctx, i) => _modeCard(ScriptMode.values[i], isGrid: true),
+          );
+        }
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'What would you like to practice?',
+                style: TextStyle(
+                    fontSize: 22, fontWeight: FontWeight.bold, color: _textDark),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Select a practice mode to get started',
+                style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 24),
+              ...ScriptMode.values.map((mode) => _modeCard(mode, isGrid: false)),
+              const SizedBox(height: 24),
+              if (_selectedMode == ScriptMode.scriptBased) ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: _cardBg,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _border),
+                  ),
+                  child: Row(children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: _primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.folder_open_outlined,
+                          color: _primary, size: 24),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('My Scripts',
+                              style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  color: _textDark)),
+                          Text('${_uploadedScripts.length} uploaded scripts',
+                              style: const TextStyle(
+                                  fontSize: 13, color: AppColors.textSecondary)),
+                        ],
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _currentStep = 2;
+                          _selectedMode = ScriptMode.scriptBased;
+                          _selectedLevel = null;
+                        });
+                        _loadScripts();
+                      },
+                      child:
+                          const Text('View All', style: TextStyle(color: _primary)),
+                    ),
+                  ]),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _modeCard(ScriptMode mode) {
-    return GestureDetector(
+  Widget _modeCard(ScriptMode mode, {required bool isGrid}) {
+    final card = InkWell(
       onTap: () => _selectMode(mode),
+      borderRadius: BorderRadius.circular(14),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: _cardBg,
@@ -776,37 +883,75 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
             ),
           ],
         ),
-        child: Row(children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: _primary.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(mode.icon, color: _primary, size: 28),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(mode.label,
+        child: isGrid
+            ? Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(mode.icon, color: _primary, size: 32),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    mode.label,
+                    textAlign: TextAlign.center,
                     style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 15,
                         fontWeight: FontWeight.bold,
-                        color: _textDark)),
-                const SizedBox(height: 4),
-                Text(
-                  _modeDescription(mode),
-                  style: const TextStyle(
-                      fontSize: 13, color: AppColors.textMuted, height: 1.4),
+                        color: _textDark),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _modeDescription(mode),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textMuted, height: 1.4),
+                  ),
+                ],
+              )
+            : Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(mode.icon, color: _primary, size: 28),
                 ),
-              ],
-            ),
-          ),
-          const Icon(Icons.chevron_right, color: AppColors.textFaint),
-        ]),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(mode.label,
+                          style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: _textDark)),
+                      const SizedBox(height: 4),
+                      Text(
+                        _modeDescription(mode),
+                        style: const TextStyle(
+                            fontSize: 13, color: AppColors.textMuted, height: 1.4),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right, color: AppColors.textFaint),
+              ]),
       ),
+    );
+
+    if (isGrid) return card;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: card,
     );
   }
 
@@ -823,85 +968,149 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
 
   // ── Step 1: Level Selection ───────────────────────────
   Widget _buildLevelSelection() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: _primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(_selectedMode!.icon, color: _primary, size: 20),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = MediaQuery.of(context).size.width;
+        final isWide = width > 600;
+
+        if (isWide) {
+          return GridView.builder(
+            padding: const EdgeInsets.all(20),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              childAspectRatio: 2.2,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(_selectedMode!.label,
-                      style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: _primary)),
-                  const Text('Select your proficiency level',
-                      style: TextStyle(fontSize: 13, color: _textGrey)),
-                ],
-              ),
-            ),
-          ]),
-          const SizedBox(height: 24),
-          ...ProficiencyLevel.values.map((level) => _levelCard(level)),
-        ],
-      ),
+            itemCount: ProficiencyLevel.values.length,
+            itemBuilder: (ctx, i) => _levelCard(ProficiencyLevel.values[i], isGrid: true),
+          );
+        }
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(_selectedMode!.icon, color: _primary, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(_selectedMode!.label,
+                          style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: _primary)),
+                      Text(
+                        _isScriptBasedMode
+                            ? 'Select your proficiency level'
+                            : "Select your level — we'll pick a few fresh scripts for you",
+                        style: const TextStyle(fontSize: 13, color: _textGrey),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 24),
+              ...ProficiencyLevel.values.map((level) => _levelCard(level, isGrid: false)),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _levelCard(ProficiencyLevel level) {
-    return GestureDetector(
+  Widget _levelCard(ProficiencyLevel level, {required bool isGrid}) {
+    final card = InkWell(
       onTap: () => _selectLevel(level),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: _cardBg,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: _border),
         ),
-        child: Row(children: [
-          Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(
-              color: level.color,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(level.label,
+        child: isGrid
+            ? Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 16,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: level.color,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    level.label,
+                    textAlign: TextAlign.center,
                     style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
-                        color: _textDark)),
-                const SizedBox(height: 2),
-                Text(
-                  _levelDescription(level),
-                  style: const TextStyle(
-                      fontSize: 12, color: AppColors.textSecondary),
+                        color: _textDark),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _levelDescription(level),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary),
+                  ),
+                ],
+              )
+            : Row(children: [
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: level.color,
+                    shape: BoxShape.circle,
+                  ),
                 ),
-              ],
-            ),
-          ),
-          const Icon(Icons.chevron_right, color: AppColors.textFaint),
-        ]),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(level.label,
+                          style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: _textDark)),
+                      const SizedBox(height: 2),
+                      Text(
+                        _levelDescription(level),
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right, color: AppColors.textFaint),
+              ]),
       ),
+    );
+
+    if (isGrid) return card;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: card,
     );
   }
 
@@ -920,7 +1129,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
     }
   }
 
-  // ── Step 2: Script List ─────────────────────────────
+  // ── Step 2: Script List ──────────────────────────────
   Widget _buildScriptList() {
     if (_error != null) return _buildErrorView();
 
@@ -939,7 +1148,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
 
   Widget _buildBuiltinTab() {
     return RefreshIndicator(
-      onRefresh: () => _loadScripts(silent: true),
+      onRefresh: _refreshBuiltin,
       color: _primary,
       child: _filteredBuiltin.isEmpty
           ? _buildEmptyView(
@@ -948,14 +1157,37 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                   ? 'No scripts found for this mode & level'
                   : 'No scripts match your search',
               hint: _builtinScripts.isEmpty
-                  ? 'Try a different level or upload your own'
+                  ? (_isScriptBasedMode
+                      ? 'Try a different level or upload your own'
+                      : 'Pull down to try fetching scripts again')
                   : 'Try a different search term',
             )
-          : ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-              itemCount: _filteredBuiltin.length,
-              itemBuilder: (ctx, i) =>
-                  _scriptCard(_filteredBuiltin[i], isBuiltin: true),
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                final width = MediaQuery.of(context).size.width;
+                final isWide = width > 700;
+                
+                if (isWide) {
+                  return GridView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: width > 1100 ? 3 : 2,
+                      childAspectRatio: 1.6,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 16,
+                    ),
+                    itemCount: _filteredBuiltin.length,
+                    itemBuilder: (ctx, i) => _scriptCard(_filteredBuiltin[i], isBuiltin: true),
+                  );
+                }
+                
+                return ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                  itemCount: _filteredBuiltin.length,
+                  itemBuilder: (ctx, i) =>
+                      _scriptCard(_filteredBuiltin[i], isBuiltin: true),
+                );
+              },
             ),
     );
   }
@@ -971,11 +1203,32 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
               hint: 'Tap the + button to upload or type a script',
               showAddButton: true,
             )
-          : ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-              itemCount: _filteredUploaded.length,
-              itemBuilder: (ctx, i) =>
-                  _scriptCard(_filteredUploaded[i], isBuiltin: false),
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                final width = MediaQuery.of(context).size.width;
+                final isWide = width > 700;
+                
+                if (isWide) {
+                  return GridView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: width > 1100 ? 3 : 2,
+                      childAspectRatio: 1.6,
+                      crossAxisSpacing: 16,
+                      mainAxisSpacing: 16,
+                    ),
+                    itemCount: _filteredUploaded.length,
+                    itemBuilder: (ctx, i) => _scriptCard(_filteredUploaded[i], isBuiltin: false),
+                  );
+                }
+                
+                return ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+                  itemCount: _filteredUploaded.length,
+                  itemBuilder: (ctx, i) =>
+                      _scriptCard(_filteredUploaded[i], isBuiltin: false),
+                );
+              },
             ),
     );
   }
@@ -1004,21 +1257,31 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // Title + level badge
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(
-                  child: Text(
-                    script['title'] ?? 'Untitled',
-                    style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: _textDark),
+              // Title + level badge — WRAP instead of Row to prevent overflow
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.55,
+                    ),
+                    child: Text(
+                      script['title'] ?? 'Untitled',
+                      style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: _textDark),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                _levelBadge(profLevel),
-              ]),
+                  _levelBadge(profLevel),
+                ],
+              ),
 
               // Description
               if (script['description'] != null &&
@@ -1027,6 +1290,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                 Text(
                   script['description'],
                   style: const TextStyle(fontSize: 12, color: _textGrey),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
 
@@ -1043,47 +1308,66 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
 
               const SizedBox(height: 12),
 
-              // Footer
-              Row(children: [
-                const Icon(Icons.text_fields_rounded,
-                    size: 13, color: AppColors.textMuted),
-                const SizedBox(width: 4),
-                Text('$wordCount words',
-                    style:
-                        const TextStyle(fontSize: 11, color: AppColors.textMuted)),
-                const SizedBox(width: 12),
-                if (isBuiltin) ...[
-                  const Icon(Icons.verified_rounded,
-                      size: 13, color: AppColors.accent),
-                  const SizedBox(width: 4),
-                  const Text('PronounceMate',
-                      style:
-                          TextStyle(fontSize: 11, color: AppColors.accent)),
-                ] else ...[
-                  const Icon(Icons.person_outline_rounded,
-                      size: 13, color: AppColors.textMuted),
-                  const SizedBox(width: 4),
-                  const Text('Your script',
-                      style:
-                          TextStyle(fontSize: 11, color: AppColors.textMuted)),
-                ],
-                const Spacer(),
-                ElevatedButton(
-                  onPressed: () => _startScript(script),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _primary,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(80, 32),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8)),
+              // Footer — WRAP to prevent overflow on small screens
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.text_fields_rounded,
+                          size: 13, color: AppColors.textMuted),
+                      const SizedBox(width: 4),
+                      Text('$wordCount words',
+                          style: const TextStyle(
+                              fontSize: 11, color: AppColors.textMuted)),
+                    ],
                   ),
-                  child: const Text('Practice',
-                      style:
-                          TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                ),
-              ]),
+                  if (isBuiltin) ...[
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.verified_rounded,
+                            size: 13, color: AppColors.accent),
+                        const SizedBox(width: 4),
+                        const Text('PronounceMate',
+                            style:
+                                TextStyle(fontSize: 11, color: AppColors.accent)),
+                      ],
+                    ),
+                  ] else ...[
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.person_outline_rounded,
+                            size: 13, color: AppColors.textMuted),
+                        const SizedBox(width: 4),
+                        const Text('Your script',
+                            style:
+                                TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                      ],
+                    ),
+                  ],
+                  const Spacer(),
+                  ElevatedButton(
+                    onPressed: () => _startScript(script),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _primary,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(80, 32),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text('Practice',
+                        style:
+                            TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -1172,11 +1456,13 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
           children: [
             const Icon(Icons.wifi_off, size: 56, color: AppColors.textMuted),
             const SizedBox(height: 16),
-            const Text('Could not load scripts',
-                style: TextStyle(
-                    fontSize: 18,
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w600)),
+            const Text(
+              'Could not load scripts',
+              style: TextStyle(
+                  fontSize: 18,
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: 8),
             Text(_error!,
                 textAlign: TextAlign.center,
@@ -1184,7 +1470,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                     fontSize: 13, color: AppColors.textSecondary)),
             const SizedBox(height: 24),
             ElevatedButton.icon(
-              onPressed: _loadScripts,
+              onPressed: _retryLoad,
               icon: const Icon(Icons.refresh),
               label: const Text('Try Again'),
               style: ElevatedButton.styleFrom(
@@ -1219,58 +1505,61 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 44,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.textFaint,
-                  borderRadius: BorderRadius.circular(2),
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.textFaint,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
-            const Text('Add Your Script',
-                style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: _textDark)),
-            const SizedBox(height: 4),
-            const Text(
-              'Choose how you want to add a new practice script',
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 20),
-            _uploadOptionTile(
-              icon: Icons.upload_file_outlined,
-              iconColor: AppColors.accent,
-              iconBg: AppColors.surfaceVariant,
-              title: 'Upload a File',
-              subtitle: 'Supports .txt and .docx formats',
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickAndUploadFile();
-              },
-            ),
-            const SizedBox(height: 10),
-            _uploadOptionTile(
-              icon: Icons.edit_note_outlined,
-              iconColor: _primary,
-              iconBg: _primary.withValues(alpha: 0.1),
-              title: 'Type or Paste Text',
-              subtitle: 'Write your own script directly',
-              onTap: () {
-                Navigator.pop(ctx);
-                _showTextDialog();
-              },
-            ),
-          ],
+              const SizedBox(height: 20),
+              const Text('Add Your Script',
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: _textDark)),
+              const SizedBox(height: 4),
+              const Text(
+                'Choose how you want to add a new practice script',
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 20),
+              _uploadOptionTile(
+                icon: Icons.upload_file_outlined,
+                iconColor: AppColors.accent,
+                iconBg: AppColors.surfaceVariant,
+                title: 'Upload a File',
+                subtitle: 'Supports .txt and .docx formats',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickAndUploadFile();
+                },
+              ),
+              const SizedBox(height: 10),
+              _uploadOptionTile(
+                icon: Icons.edit_note_outlined,
+                iconColor: _primary,
+                iconBg: _primary.withValues(alpha: 0.1),
+                title: 'Type or Paste Text',
+                subtitle: 'Write your own script directly',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showTextDialog();
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

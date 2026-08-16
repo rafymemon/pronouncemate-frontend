@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import '../services/user_session.dart';
 import '../services/user_progress_service.dart';
+import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common_widgets.dart';
+import 'active_session_screen.dart';
 import 'dashboard_screen.dart';
 import 'login_screen.dart';
 import 'profile_screen.dart';
+import 'script_selection_screen.dart' show ProficiencyLevel, ScriptMode;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,6 +22,11 @@ class HomeScreenState extends State<HomeScreen> {
   late UserProgressSummary _summary;
   bool _isLoadingSummary = true;
 
+  // ── Smart Rotation: Today's Picks state ────────────────
+  List<Map<String, dynamic>> _todaysPicks = [];
+  bool _loadingPicks = true;
+  String? _picksError;
+
   @override
   void initState() {
     super.initState();
@@ -26,6 +34,7 @@ class HomeScreenState extends State<HomeScreen> {
     _isLoadingSummary = UserProgressService.cachedSummary == null;
     UserProgressService.instance.addListener(_onProgressChanged);
     _loadSummary();
+    _loadTodaysPicks();
   }
 
   @override
@@ -66,12 +75,57 @@ class HomeScreenState extends State<HomeScreen> {
     UserProgressService.cache(summary);
   }
 
+  // ── Smart Rotation: fetch Today's Picks ────────────────
+  Future<void> _loadTodaysPicks() async {
+    if (mounted) {
+      setState(() {
+        _loadingPicks = true;
+        _picksError = null;
+      });
+    }
+
+    final result = await ApiService.getRotatedScripts(count: 3);
+    if (!mounted) return;
+
+    if (result['error'] != null) {
+      setState(() {
+        _loadingPicks = false;
+        _picksError = result['error'].toString();
+      });
+      return;
+    }
+
+    setState(() {
+      _loadingPicks = false;
+      _picksError = null;
+      _todaysPicks = List<Map<String, dynamic>>.from(result['scripts'] ?? []);
+    });
+  }
+
+  void _openScript(Map<String, dynamic> script) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ActiveSessionScreen(
+          scriptText: script['content']?.toString() ?? '',
+          scriptId: script['id']?.toString(),
+          sessionTitle: script['title']?.toString() ?? 'Practice',
+        ),
+      ),
+    ).then((_) {
+      // Refresh picks when the user comes back — the script they just
+      // practiced should no longer show as "unpracticed" next time.
+      _loadTodaysPicks();
+    });
+  }
+
   Future<void> reload() async {
     await _loadSummary();
   }
 
   Future<void> _refresh() async {
     await reload();
+    await _loadTodaysPicks();
   }
 
   void _onProgressChanged() {
@@ -287,6 +341,16 @@ class HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 28),
 
+                    // ── Today's Picks (Smart Rotation) ────────────────
+                    _TodaysPicksSection(
+                      picks: _todaysPicks,
+                      loading: _loadingPicks,
+                      error: _picksError,
+                      onRetry: _loadTodaysPicks,
+                      onTapScript: _openScript,
+                    ),
+                    const SizedBox(height: 28),
+
                     // ── Quick Stats ──────────────────────────────────
                     const SectionHeader(
                       title: 'Your Progress',
@@ -361,6 +425,201 @@ class HomeScreenState extends State<HomeScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+// ── Today's Picks (Smart Rotation) ──────────────────────────────────
+class _TodaysPicksSection extends StatelessWidget {
+  final List<Map<String, dynamic>> picks;
+  final bool loading;
+  final String? error;
+  final VoidCallback onRetry;
+  final ValueChanged<Map<String, dynamic>> onTapScript;
+
+  const _TodaysPicksSection({
+    required this.picks,
+    required this.loading,
+    required this.error,
+    required this.onRetry,
+    required this.onTapScript,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SectionHeader(
+          title: "Today's Picks",
+          subtitle: 'Fresh scripts chosen just for you',
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          height: 168,
+          child: _buildContent(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContent() {
+    if (loading) {
+      return const Center(
+        child: CircularProgressIndicator(
+          color: AppColors.primary,
+          strokeWidth: 2.4,
+        ),
+      );
+    }
+
+    if (error != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.wifi_off_rounded,
+                color: AppColors.textMuted, size: 26),
+            const SizedBox(height: 8),
+            const Text(
+              "Couldn't load today's picks",
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 6),
+            TextButton(
+              onPressed: onRetry,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('Retry',
+                  style: TextStyle(color: AppColors.primary, fontSize: 12)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (picks.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 24),
+          child: Text(
+            "You've cleared every script in the library — amazing work! "
+            "Upload your own to keep practicing.",
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      scrollDirection: Axis.horizontal,
+      itemCount: picks.length,
+      separatorBuilder: (_, __) => const SizedBox(width: 12),
+      itemBuilder: (ctx, i) => _PickCard(
+        script: picks[i],
+        onTap: () => onTapScript(picks[i]),
+      ),
+    );
+  }
+}
+
+class _PickCard extends StatelessWidget {
+  final Map<String, dynamic> script;
+  final VoidCallback onTap;
+
+  const _PickCard({required this.script, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final level = ProficiencyLevel.fromValue(
+        script['level']?.toString() ?? 'beginner');
+    final mode = ScriptMode.fromValue(
+        script['mode']?.toString() ?? 'daily_conversation');
+    final wordCount = script['word_count'] as int? ?? 0;
+    final preview = script['preview']?.toString() ?? '';
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 220,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [
+            BoxShadow(
+                color: AppColors.cardShadow, blurRadius: 8, offset: Offset(0, 3)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(mode.icon, size: 16, color: AppColors.primary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    mode.label,
+                    style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primary),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              script['title']?.toString() ?? 'Untitled',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 4),
+            Expanded(
+              child: Text(
+                preview,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 11.5,
+                    color: AppColors.textSecondary,
+                    height: 1.35),
+              ),
+            ),
+            Row(
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: level.color.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(level.label,
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: level.color,
+                          fontWeight: FontWeight.w600)),
+                ),
+                const Spacer(),
+                Text('$wordCount w',
+                    style: const TextStyle(
+                        fontSize: 10, color: AppColors.textMuted)),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

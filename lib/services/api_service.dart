@@ -192,6 +192,44 @@ static Future<Map<String, dynamic>> clearSessionHistory() async {
     }
   }
 
+  // ── Smart Rotation ──────────────────────────────────────
+  // Returns a smart-rotated set of scripts for the current user:
+  // scripts they haven't practiced yet first, then their oldest-practiced
+  // scripts once the unpracticed pool for that mode/level is exhausted.
+  // Pass mode/level null to rotate across the whole builtin library
+  // (used for the home screen's "Today's Picks").
+  static Future<Map<String, dynamic>> getRotatedScripts({
+    String? mode,
+    String? level,
+    int count = 5,
+  }) async {
+    try {
+      final params = <String, String>{'count': count.toString()};
+      if (mode != null) params['mode'] = mode;
+      if (level != null) params['level'] = level;
+
+      final uri = Uri.parse('$baseUrl/scripts/rotation/')
+          .replace(queryParameters: params);
+
+      final response = await http
+          .get(uri, headers: await authHeaders)
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return {
+          'scripts': List<Map<String, dynamic>>.from(
+            (data['scripts'] as List? ?? [])
+                .map((e) => Map<String, dynamic>.from(e)),
+          ),
+        };
+      }
+      return {'scripts': [], 'error': 'Server error ${response.statusCode}'};
+    } catch (e) {
+      return {'scripts': [], 'error': e.toString()};
+    }
+  }
+
   static Future<Map<String, dynamic>> uploadScriptText({
     required String title,
     required String content,

@@ -13,26 +13,59 @@ class PronouncemateLogo extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: size, height: size,
+          width: size,
+          height: size,
           decoration: BoxDecoration(
             color: AppColors.primary,
             borderRadius: BorderRadius.circular(size * 0.28),
-            boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.4), blurRadius: 18, offset: const Offset(0, 6))]),
-          child: Icon(Icons.record_voice_over_rounded, color: Colors.white, size: size * 0.52)),
-        const SizedBox(height: 12),
-        RichText(
-          text: TextSpan(
-            style: TextStyle(fontSize: size * 0.36, fontWeight: FontWeight.bold, color: AppColors.textPrimary, letterSpacing: 0.4),
-            children: const [
-              TextSpan(text: 'Pronounce'),
-              TextSpan(text: 'Mate', style: TextStyle(color: AppColors.primary)),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.4),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
+              ),
             ],
+          ),
+          child: Icon(
+            Icons.record_voice_over_rounded,
+            color: Colors.white,
+            size: size * 0.52,
+          ),
+        ),
+        const SizedBox(height: 12),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: RichText(
+            text: TextSpan(
+              style: TextStyle(
+                fontSize: size * 0.36,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+                letterSpacing: 0.4,
+              ),
+              children: const [
+                TextSpan(text: 'Pronounce'),
+                TextSpan(
+                  text: 'Mate',
+                  style: TextStyle(color: AppColors.primary),
+                ),
+              ],
+            ),
           ),
         ),
         if (showTagline) ...[
           const SizedBox(height: 5),
-          const Text('AI-Powered Pronunciation Coach',
-            style: TextStyle(fontSize: 13, color: AppColors.textSecondary, letterSpacing: 0.2)),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: const Text(
+              'AI-Powered Pronunciation Coach',
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ),
         ],
       ],
     );
@@ -45,20 +78,53 @@ class PrimaryButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool isLoading;
   final IconData? icon;
-  const PrimaryButton({super.key, required this.label, required this.onPressed, this.isLoading = false, this.icon});
+  const PrimaryButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.isLoading = false,
+    this.icon,
+  });
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: double.infinity, height: 54,
+      width: double.infinity,
       child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          minimumSize: const Size.fromHeight(54),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        ),
         onPressed: isLoading ? null : onPressed,
         child: isLoading
-            ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-            : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                if (icon != null) ...[Icon(icon, size: 20), const SizedBox(width: 8)],
-                Text(label),
-              ])));
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2.5,
+                ),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, size: 20),
+                    const SizedBox(width: 8),
+                  ],
+                  Flexible(
+                    child: Text(
+                      label,
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
   }
 }
 
@@ -67,7 +133,12 @@ class SectionHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
   final Widget? trailing;
-  const SectionHeader({super.key, required this.title, this.subtitle, this.trailing});
+  const SectionHeader({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -77,13 +148,35 @@ class SectionHeader extends StatelessWidget {
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-              if (subtitle != null) Text(subtitle!, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+              if (subtitle != null)
+                Text(
+                  subtitle!,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                ),
             ],
           ),
         ),
-        if (trailing != null) trailing!,
+        if (trailing != null)
+          Flexible(
+            child: trailing!,
+          ),
       ],
     );
   }
@@ -95,7 +188,13 @@ class StatCard extends StatelessWidget {
   final String value;
   final IconData icon;
   final Color color;
-  const StatCard({super.key, required this.label, required this.value, required this.icon, required this.color});
+  const StatCard({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -104,29 +203,56 @@ class StatCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: const [BoxShadow(color: AppColors.cardShadow, blurRadius: 10, offset: Offset(0, 4))]),
-      // 1. Wrap the Column in a FittedBox
+        boxShadow: const [
+          BoxShadow(
+            color: AppColors.cardShadow,
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
       child: FittedBox(
-        fit: BoxFit.scaleDown, // Shrinks the UI proportionally ONLY if it needs to
-        alignment: Alignment.centerLeft, // Keeps your left-aligned design intact
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          // 2. Tell the Column to only take up as much space as its children need
-          mainAxisSize: MainAxisSize.min, 
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(width: 34, height: 34,
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(9)),
-              child: Icon(icon, color: color, size: 18)),
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Icon(icon, color: color, size: 18),
+            ),
             const SizedBox(height: 8),
-            Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
             const SizedBox(height: 2),
-            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 }
+
 // ─── Input Field ───────────────────────────────────────────────
 class AppTextField extends StatefulWidget {
   final String label;
@@ -136,8 +262,16 @@ class AppTextField extends StatefulWidget {
   final TextEditingController? controller;
   final TextInputType keyboardType;
   final String? Function(String?)? validator;
-  const AppTextField({super.key, required this.label, required this.hint, required this.prefixIcon,
-    this.isPassword = false, this.controller, this.keyboardType = TextInputType.text, this.validator});
+  const AppTextField({
+    super.key,
+    required this.label,
+    required this.hint,
+    required this.prefixIcon,
+    this.isPassword = false,
+    this.controller,
+    this.keyboardType = TextInputType.text,
+    this.validator,
+  });
 
   @override
   State<AppTextField> createState() => _AppTextFieldState();
@@ -145,6 +279,7 @@ class AppTextField extends StatefulWidget {
 
 class _AppTextFieldState extends State<AppTextField> {
   bool _obscure = true;
+
   @override
   Widget build(BuildContext context) {
     return TextFormField(
@@ -152,15 +287,29 @@ class _AppTextFieldState extends State<AppTextField> {
       obscureText: widget.isPassword ? _obscure : false,
       keyboardType: widget.keyboardType,
       validator: widget.validator,
-      style: const TextStyle(color: AppColors.textPrimary, fontSize: 15),
+      style: const TextStyle(
+        color: AppColors.textPrimary,
+        fontSize: 15,
+      ),
       decoration: InputDecoration(
         labelText: widget.label,
         hintText: widget.hint,
-        prefixIcon: Icon(widget.prefixIcon, color: AppColors.accent, size: 22),
+        prefixIcon: Icon(
+          widget.prefixIcon,
+          color: AppColors.accent,
+          size: 22,
+        ),
         suffixIcon: widget.isPassword
             ? IconButton(
-                icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility, color: AppColors.textHint, size: 20),
-                onPressed: () => setState(() => _obscure = !_obscure))
-            : null));
+                icon: Icon(
+                  _obscure ? Icons.visibility_off : Icons.visibility,
+                  color: AppColors.textHint,
+                  size: 20,
+                ),
+                onPressed: () => setState(() => _obscure = !_obscure),
+              )
+            : null,
+      ),
+    );
   }
 }
