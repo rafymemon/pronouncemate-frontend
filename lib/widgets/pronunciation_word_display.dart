@@ -1,11 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/word_status.dart';
 
-/// Renders a script as colored words: green = correct, red = mispronounced,
-/// neutral = not yet judged. This is the ONE place word-coloring logic
-/// lives — both the full-script evaluation screen and the live practice
-/// screen render through this widget, so "why is this word red" always
-/// has a single answer.
 class PronunciationWordDisplay extends StatelessWidget {
   final List<DisplayWord> words;
   final void Function(DisplayWord word)? onWordTap;
@@ -24,6 +19,8 @@ class PronunciationWordDisplay extends StatelessWidget {
         return const Color(0xFFD4EDDA);
       case WordStatus.error:
         return const Color(0xFFFFE0E0);
+      case WordStatus.skipped:
+        return const Color(0xFFFFF3CD);
       case WordStatus.pending:
         return Colors.transparent;
     }
@@ -35,8 +32,21 @@ class PronunciationWordDisplay extends StatelessWidget {
         return const Color(0xFF2E7D32);
       case WordStatus.error:
         return const Color(0xFFC62828);
+      case WordStatus.skipped:
+        return const Color(0xFF856404);
       case WordStatus.pending:
         return pendingTextColor;
+    }
+  }
+
+  Color _underline(WordStatus s) {
+    switch (s) {
+      case WordStatus.error:
+        return Colors.red.shade400;
+      case WordStatus.skipped:
+        return const Color(0xFFCC9A06);
+      default:
+        return Colors.transparent;
     }
   }
 
@@ -45,8 +55,9 @@ class PronunciationWordDisplay extends StatelessWidget {
     return RichText(
       text: TextSpan(
         children: words.map((w) {
-          final tappable =
-              onWordTap != null && w.status == WordStatus.error && w.tip != null;
+          final tappable = onWordTap != null &&
+              (w.status == WordStatus.error || w.status == WordStatus.skipped) &&
+              w.tip != null;
           return WidgetSpan(
             child: GestureDetector(
               onTap: tappable ? () => onWordTap!(w) : null,
@@ -56,9 +67,8 @@ class PronunciationWordDisplay extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: _bg(w.status),
                   borderRadius: BorderRadius.circular(6),
-                  border: w.status == WordStatus.error
-                      ? Border(
-                          bottom: BorderSide(color: Colors.red.shade400, width: 2))
+                  border: w.status == WordStatus.error || w.status == WordStatus.skipped
+                      ? Border(bottom: BorderSide(color: _underline(w.status), width: 2))
                       : null,
                 ),
                 child: Text(

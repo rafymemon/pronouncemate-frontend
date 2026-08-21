@@ -486,8 +486,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                             child: Text(
                               _selectedMode!.label,
                               style: const TextStyle(
-                                  color: _primary,
-                                  fontWeight: FontWeight.w600),
+                                  color: _primary, fontWeight: FontWeight.w600),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
@@ -787,7 +786,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
               mainAxisSpacing: 16,
             ),
             itemCount: ScriptMode.values.length,
-            itemBuilder: (ctx, i) => _modeCard(ScriptMode.values[i], isGrid: true),
+            itemBuilder: (ctx, i) =>
+                _modeCard(ScriptMode.values[i], isGrid: true),
           );
         }
 
@@ -799,7 +799,9 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
               const Text(
                 'What would you like to practice?',
                 style: TextStyle(
-                    fontSize: 22, fontWeight: FontWeight.bold, color: _textDark),
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: _textDark),
               ),
               const SizedBox(height: 6),
               const Text(
@@ -807,7 +809,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                 style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 24),
-              ...ScriptMode.values.map((mode) => _modeCard(mode, isGrid: false)),
+              ...ScriptMode.values
+                  .map((mode) => _modeCard(mode, isGrid: false)),
               const SizedBox(height: 24),
               if (_selectedMode == ScriptMode.scriptBased) ...[
                 Container(
@@ -839,7 +842,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                                   color: _textDark)),
                           Text('${_uploadedScripts.length} uploaded scripts',
                               style: const TextStyle(
-                                  fontSize: 13, color: AppColors.textSecondary)),
+                                  fontSize: 13,
+                                  color: AppColors.textSecondary)),
                         ],
                       ),
                     ),
@@ -852,8 +856,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                         });
                         _loadScripts();
                       },
-                      child:
-                          const Text('View All', style: TextStyle(color: _primary)),
+                      child: const Text('View All',
+                          style: TextStyle(color: _primary)),
                     ),
                   ]),
                 ),
@@ -938,7 +942,9 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                       Text(
                         _modeDescription(mode),
                         style: const TextStyle(
-                            fontSize: 13, color: AppColors.textMuted, height: 1.4),
+                            fontSize: 13,
+                            color: AppColors.textMuted,
+                            height: 1.4),
                       ),
                     ],
                   ),
@@ -983,7 +989,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
               mainAxisSpacing: 16,
             ),
             itemCount: ProficiencyLevel.values.length,
-            itemBuilder: (ctx, i) => _levelCard(ProficiencyLevel.values[i], isGrid: true),
+            itemBuilder: (ctx, i) =>
+                _levelCard(ProficiencyLevel.values[i], isGrid: true),
           );
         }
 
@@ -1023,7 +1030,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                 ),
               ]),
               const SizedBox(height: 24),
-              ...ProficiencyLevel.values.map((level) => _levelCard(level, isGrid: false)),
+              ...ProficiencyLevel.values
+                  .map((level) => _levelCard(level, isGrid: false)),
             ],
           ),
         );
@@ -1166,7 +1174,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
               builder: (context, constraints) {
                 final width = MediaQuery.of(context).size.width;
                 final isWide = width > 700;
-                
+
                 if (isWide) {
                   return GridView.builder(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
@@ -1177,10 +1185,11 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                       mainAxisSpacing: 16,
                     ),
                     itemCount: _filteredBuiltin.length,
-                    itemBuilder: (ctx, i) => _scriptCard(_filteredBuiltin[i], isBuiltin: true),
+                    itemBuilder: (ctx, i) =>
+                        _scriptCard(_filteredBuiltin[i], isBuiltin: true),
                   );
                 }
-                
+
                 return ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
                   itemCount: _filteredBuiltin.length,
@@ -1207,7 +1216,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
               builder: (context, constraints) {
                 final width = MediaQuery.of(context).size.width;
                 final isWide = width > 700;
-                
+
                 if (isWide) {
                   return GridView.builder(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
@@ -1218,10 +1227,11 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                       mainAxisSpacing: 16,
                     ),
                     itemCount: _filteredUploaded.length,
-                    itemBuilder: (ctx, i) => _scriptCard(_filteredUploaded[i], isBuiltin: false),
+                    itemBuilder: (ctx, i) =>
+                        _scriptCard(_filteredUploaded[i], isBuiltin: false),
                   );
                 }
-                
+
                 return ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
                   itemCount: _filteredUploaded.length,
@@ -1308,49 +1318,59 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
 
               const SizedBox(height: 12),
 
-              // Footer — WRAP to prevent overflow on small screens
-              Wrap(
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 12,
-                runSpacing: 8,
+              // Footer — meta info wraps on narrow screens, button stays
+              // pinned to the trailing edge (Row + Expanded, not Spacer
+              // inside Wrap — Spacer needs a single-axis Flex parent).
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.text_fields_rounded,
-                          size: 13, color: AppColors.textMuted),
-                      const SizedBox(width: 4),
-                      Text('$wordCount words',
-                          style: const TextStyle(
-                              fontSize: 11, color: AppColors.textMuted)),
-                    ],
+                  Expanded(
+                    child: Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 12,
+                      runSpacing: 8,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.text_fields_rounded,
+                                size: 13, color: AppColors.textMuted),
+                            const SizedBox(width: 4),
+                            Text('$wordCount words',
+                                style: const TextStyle(
+                                    fontSize: 11, color: AppColors.textMuted)),
+                          ],
+                        ),
+                        if (isBuiltin) ...[
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.verified_rounded,
+                                  size: 13, color: AppColors.accent),
+                              const SizedBox(width: 4),
+                              const Text('PronounceMate',
+                                  style: TextStyle(
+                                      fontSize: 11, color: AppColors.accent)),
+                            ],
+                          ),
+                        ] else ...[
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.person_outline_rounded,
+                                  size: 13, color: AppColors.textMuted),
+                              const SizedBox(width: 4),
+                              const Text('Your script',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.textMuted)),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
-                  if (isBuiltin) ...[
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.verified_rounded,
-                            size: 13, color: AppColors.accent),
-                        const SizedBox(width: 4),
-                        const Text('PronounceMate',
-                            style:
-                                TextStyle(fontSize: 11, color: AppColors.accent)),
-                      ],
-                    ),
-                  ] else ...[
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.person_outline_rounded,
-                            size: 13, color: AppColors.textMuted),
-                        const SizedBox(width: 4),
-                        const Text('Your script',
-                            style:
-                                TextStyle(fontSize: 11, color: AppColors.textMuted)),
-                      ],
-                    ),
-                  ],
-                  const Spacer(),
+                  const SizedBox(width: 8),
                   ElevatedButton(
                     onPressed: () => _startScript(script),
                     style: ElevatedButton.styleFrom(
@@ -1363,8 +1383,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                           borderRadius: BorderRadius.circular(8)),
                     ),
                     child: const Text('Practice',
-                        style:
-                            TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                        style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w600)),
                   ),
                 ],
               ),

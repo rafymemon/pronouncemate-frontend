@@ -1,9 +1,81 @@
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import 'main_shell.dart';
 import 'progress_analytics_screen.dart';
+
+// ═══════════════════════════════════════════════════════
+// TOP-LEVEL HELPERS (shared across widgets in this file)
+// ═══════════════════════════════════════════════════════
+
+Color _modeColorFor(String? mode) {
+  switch (mode) {
+    case 'public_speaking':
+      return AppColors.primary;
+    case 'daily_conversation':
+      return AppColors.accent;
+    case 'script_based':
+      return AppColors.success;
+    default:
+      return AppColors.primary;
+  }
+}
+
+IconData _modeIconFor(String? mode) {
+  switch (mode) {
+    case 'public_speaking':
+      return Icons.campaign_rounded;
+    case 'daily_conversation':
+      return Icons.chat_bubble_rounded;
+    case 'script_based':
+      return Icons.description_rounded;
+    default:
+      return Icons.play_arrow_rounded;
+  }
+}
+
+Color _scoreColorFor(dynamic score) {
+  final s = (score as num?)?.toDouble() ?? 0;
+  if (s >= 80) return const Color(0xFF16A34A);
+  if (s >= 60) return const Color(0xFF2563EB);
+  if (s >= 40) return const Color(0xFFF59E0B);
+  return const Color(0xFFEF4444);
+}
+
+/// Lays out a card title + trailing control(s) responsively.
+/// Falls back to a stacked layout on narrow widths instead of overflowing.
+class _ResponsiveCardHeader extends StatelessWidget {
+  final Widget title;
+  final Widget trailing;
+  final double breakpoint;
+  const _ResponsiveCardHeader({required this.title, required this.trailing, this.breakpoint = 300});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < breakpoint) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              title,
+              const SizedBox(height: 10),
+              Align(alignment: Alignment.centerLeft, child: trailing),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(child: title),
+            const SizedBox(width: 12),
+            trailing,
+          ],
+        );
+      },
+    );
+  }
+}
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -76,8 +148,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       _improvement = Map<String, dynamic>.from(data['improvement'] ?? {});
       _focusWords = List<Map<String, dynamic>>.from(data['focus_words'] ?? []);
       _modeScores = (data['mode_scores'] as Map<String, dynamic>?)?.map(
-        (k, v) => MapEntry(k, (v as num).toDouble()),
-      ) ?? {};
+            (k, v) => MapEntry(k, (v as num).toDouble()),
+          ) ??
+          {};
       _loading = false;
     });
 
@@ -141,8 +214,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                 const SizedBox(height: 20),
                 _buildQuickStatsCarousel(),
                 const SizedBox(height: 24),
-                _buildDailyGoalRing(),
-                const SizedBox(height: 24),
                 if (_sparkline.length >= 2) ...[
                   _buildWeeklyHeatmap(),
                   const SizedBox(height: 24),
@@ -151,15 +222,13 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                   _buildImprovementBadge(),
                   const SizedBox(height: 24),
                 ],
-                _buildModeScoreReveal(),
+                _ModePerformanceCard(modeScores: _modeScores),
                 const SizedBox(height: 24),
                 if (_focusWords.isNotEmpty) ...[
-                  _buildFocusWordsDeck(),
+                  _FocusWordsSection(words: _focusWords),
                   const SizedBox(height: 24),
                 ],
-                _buildRecentSessionsTimeline(),
-                const SizedBox(height: 24),
-                _buildSkillLevelCard(),
+                _RecentSessionsSection(sessions: _recentSessions),
                 const SizedBox(height: 24),
                 _buildAnalyticsLink(),
                 const SizedBox(height: 100),
@@ -214,10 +283,13 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                         Text(
                           _userName,
                           style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: -0.5),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
                   ),
+                  const SizedBox(width: 12),
                   AnimatedBuilder(
                     animation: _streakPulse,
                     builder: (context, child) {
@@ -237,6 +309,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                         boxShadow: [BoxShadow(color: Colors.orangeAccent.withValues(alpha: 0.3), blurRadius: 12)],
                       ),
                       child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           const Icon(Icons.local_fire_department_rounded, color: Colors.orangeAccent, size: 22),
                           const SizedBox(width: 6),
@@ -251,10 +324,11 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                 ],
               ),
               const SizedBox(height: 24),
-              Row(
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
                 children: [
                   _headerChip(Icons.emoji_events_rounded, 'Best ${_bestScore.toStringAsFixed(0)}%', Colors.amber),
-                  const SizedBox(width: 10),
                   _headerChip(Icons.star_rounded, 'Lvl ${_levelFromSessions(_totalSessions)}', const Color(0xFFA78BFA)),
                 ],
               ),
@@ -367,95 +441,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   }
 
   // ═══════════════════════════════════════════════════════
-  // DAILY GOAL — Animated ring
-  // ═══════════════════════════════════════════════════════
-
-  Widget _buildDailyGoalRing() {
-    final goalProgress = (_totalSessions % 5) / 5;
-    final sessionsToGoal = 5 - (_totalSessions % 5);
-
-    return _glassCard(
-      child: Row(
-        children: [
-          Flexible(
-            child: AspectRatio(
-              aspectRatio: 1,
-              child: TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0.0, end: goalProgress),
-                duration: const Duration(milliseconds: 1400),
-                curve: Curves.easeOutCubic,
-                builder: (context, t, _) {
-                  final safeT = t.clamp(0.0, 1.0);
-                  return Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      CircularProgressIndicator(
-                        value: 1,
-                        strokeWidth: 10,
-                        backgroundColor: const Color(0xFFF1F5F9),
-                        valueColor: const AlwaysStoppedAnimation(Color(0xFFF1F5F9)),
-                      ),
-                      CircularProgressIndicator(
-                        value: safeT,
-                        strokeWidth: 10,
-                        backgroundColor: Colors.transparent,
-                        valueColor: AlwaysStoppedAnimation(AppColors.accent),
-                        strokeCap: StrokeCap.round,
-                      ),
-                      FittedBox(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              '${(safeT * 100).toInt()}%',
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
-                            ),
-                            const Text(
-                              'Daily',
-                              style: TextStyle(fontSize: 9, color: Color(0xFF94A3B8)),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Daily Goal', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                const SizedBox(height: 6),
-                Text(
-                  sessionsToGoal == 0 ? 'Goal crushed! 🔥' : '$sessionsToGoal more sessions to hit your daily target',
-                  style: TextStyle(fontSize: 13, color: Colors.grey.shade500, height: 1.4),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: LinearProgressIndicator(
-                    value: goalProgress,
-                    backgroundColor: const Color(0xFFF1F5F9),
-                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
-                    minHeight: 8,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════
   // WEEKLY HEATMAP — Unique visual using sparkline data
   // ═══════════════════════════════════════════════════════
 
@@ -468,62 +453,65 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Weekly Activity', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(20)),
-                child: Text('${_sparkline.length} sessions', style: const TextStyle(fontSize: 11, color: Color(0xFF16A34A), fontWeight: FontWeight.w600)),
-              ),
-            ],
+          _ResponsiveCardHeader(
+            title: const Text('Weekly Activity', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(20)),
+              child: Text('${_sparkline.length} sessions', style: const TextStyle(fontSize: 11, color: Color(0xFF16A34A), fontWeight: FontWeight.w600)),
+            ),
           ),
           const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: List.generate(7, (idx) {
-              final val = idx < displayValues.length ? displayValues[idx] : 0.0;
-              final intensity = (val / 100).clamp(0.05, 1.0);
-              return TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0.0, end: 1.0),
-                duration: Duration(milliseconds: 400 + idx * 80),
-                curve: Curves.easeOutBack,
-                builder: (context, t, child) {
-                  final safeT = t.clamp(0.0, 1.0);
-                  return Opacity(
-                    opacity: safeT,
-                    child: Column(
-                      children: [
-                        Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: Color.lerp(const Color(0xFFF1F5F9), AppColors.accent, intensity * safeT),
-                            borderRadius: BorderRadius.circular(10),
-                            boxShadow: intensity > 0.6
-                                ? [BoxShadow(color: AppColors.accent.withValues(alpha: 0.25), blurRadius: 8)]
-                                : null,
-                          ),
-                          child: Center(
-                            child: Text(
-                              '${val.toInt()}',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                color: intensity > 0.4 ? Colors.white : const Color(0xFF64748B),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final cellSize = ((constraints.maxWidth - 6 * 8) / 7).clamp(24.0, 36.0);
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: List.generate(7, (idx) {
+                  final val = idx < displayValues.length ? displayValues[idx] : 0.0;
+                  final intensity = (val / 100).clamp(0.05, 1.0);
+                  return TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: Duration(milliseconds: 400 + idx * 80),
+                    curve: Curves.easeOutBack,
+                    builder: (context, t, child) {
+                      final safeT = t.clamp(0.0, 1.0);
+                      return Opacity(
+                        opacity: safeT,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: cellSize,
+                              height: cellSize,
+                              decoration: BoxDecoration(
+                                color: Color.lerp(const Color(0xFFF1F5F9), AppColors.accent, intensity * safeT),
+                                borderRadius: BorderRadius.circular(10),
+                                boxShadow: intensity > 0.6
+                                    ? [BoxShadow(color: AppColors.accent.withValues(alpha: 0.25), blurRadius: 8)]
+                                    : null,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '${val.toInt()}',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: intensity > 0.4 ? Colors.white : const Color(0xFF64748B),
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
+                            const SizedBox(height: 8),
+                            Text(days[idx], style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500)),
+                          ],
                         ),
-                        const SizedBox(height: 8),
-                        Text(days[idx], style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500)),
-                      ],
-                    ),
+                      );
+                    },
                   );
-                },
+                }),
               );
-            }),
+            },
           ),
         ],
       ),
@@ -572,6 +560,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           ],
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
               padding: const EdgeInsets.all(10),
@@ -583,7 +572,12 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('${isPositive ? '+' : ''}${pct.toStringAsFixed(0)}% vs Last Week', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white)),
+                  Text(
+                    '${isPositive ? '+' : ''}${pct.toStringAsFixed(0)}% vs Last Week',
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     isPositive ? 'Your trajectory is climbing. Keep the rhythm!' : 'Consistency beats intensity. Show up today!',
@@ -601,397 +595,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   }
 
   // ═══════════════════════════════════════════════════════
-  // MODE SCORES — Dropdown reveal with animated skill ring
-  // ═══════════════════════════════════════════════════════
-
-  Widget _buildModeScoreReveal() {
-    final modes = [
-      _ModeDisplay('Public Speaking', 'public_speaking', Icons.campaign_rounded, AppColors.primary),
-      _ModeDisplay('Daily Conversation', 'daily_conversation', Icons.chat_bubble_rounded, AppColors.accent),
-      _ModeDisplay('Script-Based', 'script_based', Icons.description_rounded, AppColors.success),
-    ];
-
-    return _glassCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Mode Performance', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-              _ModeDropdown(
-                modes: modes,
-                onSelected: (key) {},
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          ...modes.map((m) {
-            final score = _modeScores[m.key] ?? 0;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: m.color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-                        child: Icon(m.icon, color: m.color, size: 18),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(m.label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                            const SizedBox(height: 6),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: TweenAnimationBuilder<double>(
-                                tween: Tween(begin: 0.0, end: score / 100),
-                                duration: const Duration(milliseconds: 1200),
-                                curve: Curves.easeOutCubic,
-                                builder: (context, t, _) {
-                                  final safeT = t.clamp(0.0, 1.0);
-                                  return LinearProgressIndicator(
-                                    value: safeT,
-                                    backgroundColor: const Color(0xFFF1F5F9),
-                                    valueColor: AlwaysStoppedAnimation<Color>(m.color),
-                                    minHeight: 8,
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text('${score.toStringAsFixed(0)}%', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: m.color)),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // FOCUS WORDS — Horizontal snap-scroll deck
-  // ═══════════════════════════════════════════════════════
-
-  Widget _buildFocusWordsDeck() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text('Focus Words', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-            _FocusSortDropdown(
-              onSortChanged: (sortType) {
-                // In a real app, re-sort _focusWords here
-              },
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        SizedBox(
-          height: 140,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            itemCount: _focusWords.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (context, idx) {
-              final word = _focusWords[idx];
-              return TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0.0, end: 1.0),
-                duration: Duration(milliseconds: 500 + idx * 100),
-                curve: Curves.easeOutCubic,
-                builder: (context, t, child) {
-                  final safeT = t.clamp(0.0, 1.0);
-                  return Opacity(
-                    opacity: safeT,
-                    child: Transform.translate(
-                      offset: Offset((1 - safeT) * 30, 0),
-                      child: child,
-                    ),
-                  );
-                },
-                child: Container(
-                  width: 160,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFEF2F2), Color(0xFFFFF5F5)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFFFECACA)),
-                    boxShadow: [BoxShadow(color: const Color(0xFFEF4444).withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(color: const Color(0xFFEF4444), borderRadius: BorderRadius.circular(8)),
-                            child: Text('#${idx + 1}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
-                          ),
-                          Icon(Icons.volume_up_rounded, color: const Color(0xFFEF4444).withValues(alpha: 0.4), size: 18),
-                        ],
-                      ),
-                      Text(
-                        '"${word['word']}"',
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                      ),
-                      Text(
-                        '${word['error_count']} errors',
-                        style: const TextStyle(fontSize: 12, color: Color(0xFFEF4444), fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // RECENT SESSIONS — Timeline style with filter
-  // ═══════════════════════════════════════════════════════
-
-  Widget _buildRecentSessionsTimeline() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text('Recent Sessions', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-            _SessionFilterDropdown(
-              onFilterChanged: (filter) {
-                // Filter logic here
-              },
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        if (_recentSessions.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.divider)),
-            child: const Center(child: Text('No sessions yet. Start your first practice!', style: TextStyle(color: AppColors.textSecondary, fontSize: 14))),
-          )
-        else
-          ..._recentSessions.asMap().entries.map((entry) {
-            final idx = entry.key;
-            final session = entry.value;
-            final isLast = idx == _recentSessions.length - 1;
-            return TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0.0, end: 1.0),
-              duration: Duration(milliseconds: 400 + idx * 100),
-              curve: Curves.easeOutCubic,
-              builder: (context, t, child) {
-                final safeT = t.clamp(0.0, 1.0);
-                return Opacity(
-                  opacity: safeT,
-                  child: Transform.translate(
-                    offset: Offset((1 - safeT) * 20, 0),
-                    child: child,
-                  ),
-                );
-              },
-              child: IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Column(
-                      children: [
-                        Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            color: _modeColor(session['mode']),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
-                            boxShadow: [BoxShadow(color: _modeColor(session['mode']).withValues(alpha: 0.3), blurRadius: 6)],
-                          ),
-                        ),
-                        if (!isLast)
-                          Expanded(
-                            child: Container(width: 2, color: const Color(0xFFE2E8F0)),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 14),
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: AppColors.divider),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    session['title'] ?? 'Practice Session',
-                                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: AppColors.textPrimary),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    session['date_label'] ?? '',
-                                    style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: _scoreColor(session['score']).withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                '${(session['score'] as num?)?.toStringAsFixed(0) ?? 0}%',
-                                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: _scoreColor(session['score'])),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }),
-      ],
-    );
-  }
-
-  Color _scoreColor(dynamic score) {
-    final s = (score as num?)?.toDouble() ?? 0;
-    if (s >= 80) return const Color(0xFF16A34A);
-    if (s >= 60) return const Color(0xFF2563EB);
-    if (s >= 40) return const Color(0xFFF59E0B);
-    return const Color(0xFFEF4444);
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // SKILL LEVEL — Gamified progress card
-  // ═══════════════════════════════════════════════════════
-
-  Widget _buildSkillLevelCard() {
-    final level = _levelFromSessions(_totalSessions);
-    final progressToNext = (_totalSessions % 5) / 5;
-    final totalWords = _quickStats['words'] ?? 0;
-
-    return _glassCard(
-      child: Row(
-        children: [
-          Flexible(
-            child: AspectRatio(
-              aspectRatio: 1,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  const CircularProgressIndicator(
-                    value: 1,
-                    strokeWidth: 8,
-                    backgroundColor: Color(0xFFF1F5F9),
-                    valueColor: AlwaysStoppedAnimation(Color(0xFFF1F5F9)),
-                  ),
-                  TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0.0, end: progressToNext),
-                    duration: const Duration(milliseconds: 1200),
-                    curve: Curves.easeOutCubic,
-                    builder: (context, t, _) {
-                      final safeT = t.clamp(0.0, 1.0);
-                      return CircularProgressIndicator(
-                        value: safeT,
-                        strokeWidth: 8,
-                        backgroundColor: Colors.transparent,
-                        valueColor: const AlwaysStoppedAnimation(Color(0xFF8B5CF6)),
-                        strokeCap: StrokeCap.round,
-                      );
-                    },
-                  ),
-                  FittedBox(
-                    child: Text(
-                      '$level',
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Color(0xFF8B5CF6)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Skill Level', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                const SizedBox(height: 6),
-                Text(
-                  '$totalWords words spoken across $_totalSessions sessions',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500, height: 1.4),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: LinearProgressIndicator(
-                          value: progressToNext,
-                          backgroundColor: const Color(0xFFF1F5F9),
-                          valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF8B5CF6)),
-                          minHeight: 8,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text('${(progressToNext * 100).toInt()}%', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF8B5CF6))),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // ANALYTICS LINK — Restored navigation card
+  // ANALYTICS LINK
   // ═══════════════════════════════════════════════════════
 
   Widget _buildAnalyticsLink() {
@@ -1111,55 +715,331 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     if (mins < 60) return '${mins}m';
     return '${(mins / 60).toStringAsFixed(1)}h';
   }
+}
 
-  Color _modeColor(String? mode) {
-    switch (mode) {
-      case 'public_speaking': return AppColors.primary;
-      case 'daily_conversation': return AppColors.accent;
-      case 'script_based': return AppColors.success;
-      default: return AppColors.primary;
-    }
+// ═══════════════════════════════════════════════════════
+// MODE PERFORMANCE — Dropdown-driven animated gauge
+// ═══════════════════════════════════════════════════════
+
+class _ModePerformanceCard extends StatefulWidget {
+  final Map<String, double> modeScores;
+  const _ModePerformanceCard({required this.modeScores});
+
+  @override
+  State<_ModePerformanceCard> createState() => _ModePerformanceCardState();
+}
+
+class _ModePerformanceCardState extends State<_ModePerformanceCard> {
+  static final List<_ModeDisplay> _modes = [
+    _ModeDisplay('Public Speaking', 'public_speaking', Icons.campaign_rounded, AppColors.primary),
+    _ModeDisplay('Daily Conversation', 'daily_conversation', Icons.chat_bubble_rounded, AppColors.accent),
+    _ModeDisplay('Script-Based', 'script_based', Icons.description_rounded, AppColors.success),
+  ];
+
+  String _selectedKey = _modes.first.key;
+
+  _ModeDisplay get _selected => _modes.firstWhere((m) => m.key == _selectedKey);
+
+  String _rankLabel(double score) {
+    if (score >= 85) return 'Excellent performance';
+    if (score >= 70) return 'Good, keep practicing';
+    if (score >= 50) return 'Needs more practice';
+    return 'Just getting started';
   }
 
-  IconData _modeIcon(String? mode) {
-    switch (mode) {
-      case 'public_speaking': return Icons.campaign_rounded;
-      case 'daily_conversation': return Icons.chat_bubble_rounded;
-      case 'script_based': return Icons.description_rounded;
-      default: return Icons.play_arrow_rounded;
-    }
+  @override
+  Widget build(BuildContext context) {
+    final score = widget.modeScores[_selectedKey] ?? 0;
+    final meta = _selected;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.divider),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _ResponsiveCardHeader(
+            title: const Text('Mode Performance', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: meta.color.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: meta.color.withValues(alpha: 0.2)),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedKey,
+                  isDense: true,
+                  icon: Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: meta.color),
+                  style: TextStyle(fontSize: 13, color: meta.color, fontWeight: FontWeight.w700),
+                  dropdownColor: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  items: _modes
+                      .map((m) => DropdownMenuItem(
+                            value: m.key,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(m.icon, size: 16, color: m.color),
+                                const SizedBox(width: 8),
+                                Text(m.label),
+                              ],
+                            ),
+                          ))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setState(() => _selectedKey = v);
+                  },
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 350),
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: Tween<Offset>(begin: const Offset(0.05, 0), end: Offset.zero).animate(animation),
+                child: child,
+              ),
+            ),
+            child: LayoutBuilder(
+              key: ValueKey(_selectedKey),
+              builder: (context, constraints) {
+                final gauge = _DashboardGauge(value: score, color: meta.color);
+                final details = Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(color: meta.color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                      child: Text(meta.label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: meta.color)),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(_rankLabel(score), style: TextStyle(fontSize: 13, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 6),
+                    Text(
+                      score >= 70 ? 'You are performing well in this mode.' : 'Focus on this area to boost your overall score.',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+                    ),
+                  ],
+                );
+
+                if (constraints.maxWidth < 320) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(child: gauge),
+                      const SizedBox(height: 16),
+                      details,
+                    ],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    gauge,
+                    const SizedBox(width: 20),
+                    Expanded(child: details),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardGauge extends StatelessWidget {
+  final double value;
+  final Color color;
+  const _DashboardGauge({required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: (value / 100).clamp(0, 1)),
+      duration: const Duration(milliseconds: 1000),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, child) {
+        return SizedBox(
+          width: 100,
+          height: 100,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              const SizedBox(
+                width: 100,
+                height: 100,
+                child: CircularProgressIndicator(
+                  value: 1,
+                  strokeWidth: 10,
+                  backgroundColor: Color(0xFFF1F5F9),
+                  valueColor: AlwaysStoppedAnimation(Color(0xFFF1F5F9)),
+                ),
+              ),
+              SizedBox(
+                width: 100,
+                height: 100,
+                child: CircularProgressIndicator(
+                  value: t,
+                  strokeWidth: 10,
+                  backgroundColor: Colors.transparent,
+                  valueColor: AlwaysStoppedAnimation(color),
+                  strokeCap: StrokeCap.round,
+                ),
+              ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('${(t * 100).toStringAsFixed(0)}%', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                  const Text('Score', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }
 
 // ═══════════════════════════════════════════════════════
-// DROPDOWN WIDGETS
+// FOCUS WORDS — Sortable, responsive deck
 // ═══════════════════════════════════════════════════════
 
-class _ModeDropdown extends StatelessWidget {
-  final List<_ModeDisplay> modes;
-  final Function(String) onSelected;
-  const _ModeDropdown({required this.modes, required this.onSelected});
+class _FocusWordsSection extends StatefulWidget {
+  final List<Map<String, dynamic>> words;
+  const _FocusWordsSection({required this.words});
+
+  @override
+  State<_FocusWordsSection> createState() => _FocusWordsSectionState();
+}
+
+class _FocusWordsSectionState extends State<_FocusWordsSection> {
+  String _sort = 'Frequency';
+
+  List<Map<String, dynamic>> get _sortedWords {
+    final list = List<Map<String, dynamic>>.from(widget.words);
+    switch (_sort) {
+      case 'A-Z':
+        list.sort((a, b) => (a['word'] ?? '').toString().toLowerCase().compareTo((b['word'] ?? '').toString().toLowerCase()));
+        break;
+      case 'Recent':
+        // API returns focus words newest-first by default; leave order untouched.
+        break;
+      case 'Frequency':
+      default:
+        list.sort((a, b) => ((b['error_count'] as num?)?.toInt() ?? 0).compareTo((a['error_count'] as num?)?.toInt() ?? 0));
+    }
+    return list;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(20)),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          hint: const Text('Filter', style: TextStyle(fontSize: 11)),
-          icon: const Icon(Icons.filter_list_rounded, size: 14, color: Color(0xFF64748B)),
-          style: const TextStyle(fontSize: 11, color: AppColors.textPrimary, fontWeight: FontWeight.w600),
-          isDense: true,
-          items: [
-            const DropdownMenuItem(value: 'all', child: Text('All Modes')),
-            ...modes.map((m) => DropdownMenuItem(value: m.key, child: Text(m.label))),
-          ],
-          onChanged: (v) {
-            if (v != null) onSelected(v);
+    final words = _sortedWords;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _ResponsiveCardHeader(
+          title: const Text('Focus Words', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+          trailing: _FocusSortDropdown(
+            onSortChanged: (sortType) => setState(() => _sort = sortType),
+          ),
+          breakpoint: 260,
+        ),
+        const SizedBox(height: 14),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final cardWidth = constraints.maxWidth < 200 ? constraints.maxWidth * 0.85 : 160.0;
+            return SizedBox(
+              height: 140,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                itemCount: words.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                itemBuilder: (context, idx) {
+                  final word = words[idx];
+                  return TweenAnimationBuilder<double>(
+                    key: ValueKey('${word['word']}_$_sort'),
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: Duration(milliseconds: 400 + idx * 80),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, t, child) {
+                      final safeT = t.clamp(0.0, 1.0);
+                      return Opacity(
+                        opacity: safeT,
+                        child: Transform.translate(
+                          offset: Offset((1 - safeT) * 20, 0),
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: Container(
+                      width: cardWidth,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFEF2F2), Color(0xFFFFF5F5)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFFECACA)),
+                        boxShadow: [BoxShadow(color: const Color(0xFFEF4444).withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(color: const Color(0xFFEF4444), borderRadius: BorderRadius.circular(8)),
+                                child: Text('#${idx + 1}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
+                              ),
+                              Icon(Icons.volume_up_rounded, color: const Color(0xFFEF4444).withValues(alpha: 0.4), size: 18),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '"${word['word']}"',
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${word['error_count']} errors',
+                            style: const TextStyle(fontSize: 12, color: Color(0xFFEF4444), fontWeight: FontWeight.w600),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            );
           },
         ),
-      ),
+      ],
     );
   }
 }
@@ -1199,6 +1079,153 @@ class _FocusSortDropdownState extends State<_FocusSortDropdown> {
           },
         ),
       ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// RECENT SESSIONS — Compact filterable card list
+// ═══════════════════════════════════════════════════════
+
+class _RecentSessionsSection extends StatefulWidget {
+  final List<Map<String, dynamic>> sessions;
+  const _RecentSessionsSection({required this.sessions});
+
+  @override
+  State<_RecentSessionsSection> createState() => _RecentSessionsSectionState();
+}
+
+class _RecentSessionsSectionState extends State<_RecentSessionsSection> {
+  String _filter = 'All';
+
+  List<Map<String, dynamic>> get _filteredSessions {
+    if (_filter == 'All') return widget.sessions;
+    return widget.sessions.where((s) => s['mode'] == _filter).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sessions = _filteredSessions;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _ResponsiveCardHeader(
+          title: const Text('Recent Sessions', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+          trailing: _SessionFilterDropdown(
+            onFilterChanged: (filter) => setState(() => _filter = filter),
+          ),
+          breakpoint: 260,
+        ),
+        const SizedBox(height: 16),
+        if (sessions.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.divider)),
+            child: Center(
+              child: Text(
+                widget.sessions.isEmpty ? 'No sessions yet. Start your first practice!' : 'No sessions for this filter yet.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+              ),
+            ),
+          )
+        else
+          ...sessions.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final session = entry.value;
+            final color = _modeColorFor(session['mode']);
+
+            return TweenAnimationBuilder<double>(
+              key: ValueKey(session['id'] ?? idx),
+              tween: Tween(begin: 0.0, end: 1.0),
+              duration: Duration(milliseconds: 350 + idx * 80),
+              curve: Curves.easeOutCubic,
+              builder: (context, t, child) {
+                final safeT = t.clamp(0.0, 1.0);
+                return Opacity(
+                  opacity: safeT,
+                  child: Transform.translate(
+                    offset: Offset((1 - safeT) * 16, 0),
+                    child: child,
+                  ),
+                );
+              },
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.divider),
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 2))],
+                ),
+                // FIX: wrapped in IntrinsicHeight so the stretched Row below
+                // (colored side-bar + content) gets a bounded height instead
+                // of an infinite one from its unconstrained sliver ancestor.
+                // This was the root cause of the
+                // "BoxConstraints forces an infinite height" crash.
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(width: 5, color: color),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+                                child: Icon(_modeIconFor(session['mode']), color: color, size: 18),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      session['title'] ?? 'Practice Session',
+                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: AppColors.textPrimary),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      session['date_label'] ?? '',
+                                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: _scoreColorFor(session['score']).withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  '${(session['score'] as num?)?.toStringAsFixed(0) ?? 0}%',
+                                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: _scoreColorFor(session['score'])),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+      ],
     );
   }
 }

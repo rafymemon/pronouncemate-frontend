@@ -43,14 +43,20 @@ class SessionSummaryScreen extends StatelessWidget {
     // ── FIX: Use backend stats when available, otherwise fall back to local ──
     final correctCount = correctWords ??
         words.where((w) => w.status == WordStatus.correct).length;
-    final errorCount =
-        wrongWords ?? words.where((w) => w.status == WordStatus.error).length;
+    final errorCount = wrongWords ??
+        words
+            .where((w) =>
+                w.status == WordStatus.error || w.status == WordStatus.skipped)
+            .length;
     final totalCount = totalWords ?? words.length;
     final displayScore = wordAccuracy ?? sessionScore;
     final grade = _getGrade(displayScore);
     final gradeColor = _gradeColor(displayScore);
 
-    final errors = words.where((w) => w.status == WordStatus.error).toList();
+    // Get all words that are either incorrect or skipped
+    final errors = words
+    .where((w) => w.status == WordStatus.error || w.status == WordStatus.skipped)
+    .toList();
 
     // Build severity breakdown from error types
     final severityBreakdown = <String, int>{};

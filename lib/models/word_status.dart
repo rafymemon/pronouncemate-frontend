@@ -1,10 +1,8 @@
-import 'package:flutter/foundation.dart';
+enum WordStatus { pending, correct, error, skipped }
 
-enum WordStatus { pending, correct, error }
-
-/// Single shared model for how a word is drawn on screen.
-/// Used by both active_session_screen.dart (full evaluation)
-/// and practice_session_screen.dart (mistake-word retry + live coloring).
+/// Shared word model. `skipped` = yellow = a script word that was never
+/// spoken (deletion). Insertions (extra spoken words not in the script)
+/// have no slot here — they're reported only in the final summary.
 class DisplayWord {
   final String text;
   WordStatus status;

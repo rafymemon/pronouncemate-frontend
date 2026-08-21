@@ -5,6 +5,41 @@ import 'package:fl_chart/fl_chart.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 
+/// Lays out a card title + trailing control(s) responsively.
+/// Falls back to a stacked layout on narrow widths instead of overflowing.
+class _ResponsiveCardHeader extends StatelessWidget {
+  final Widget title;
+  final Widget trailing;
+  final double breakpoint;
+  const _ResponsiveCardHeader({required this.title, required this.trailing, this.breakpoint = 300});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < breakpoint) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              title,
+              const SizedBox(height: 10),
+              Align(alignment: Alignment.centerLeft, child: trailing),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(child: title),
+            const SizedBox(width: 12),
+            trailing,
+          ],
+        );
+      },
+    );
+  }
+}
+
 class ProgressAnalyticsScreen extends StatefulWidget {
   const ProgressAnalyticsScreen({super.key});
 
@@ -57,8 +92,9 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
           .toList();
       _errorBreakdown = ErrorBreakdown.fromJson(data['error_breakdown'] as Map<String, dynamic>? ?? {});
       _modeScores = (data['mode_scores'] as Map<String, dynamic>?)?.map(
-        (k, v) => MapEntry(k, (v as num).toDouble()),
-      ) ?? {};
+            (k, v) => MapEntry(k, (v as num).toDouble()),
+          ) ??
+          {};
       _improvement = ImprovementStats.fromJson(data['improvement'] as Map<String, dynamic>? ?? {});
       _totalStats = TotalStats.fromJson(data['total_stats'] as Map<String, dynamic>? ?? {});
       _loading = false;
@@ -181,6 +217,7 @@ class _CardShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      width: double.infinity,
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
@@ -210,7 +247,7 @@ class _AnimatedCounter extends StatelessWidget {
       curve: Curves.easeOutCubic,
       builder: (context, val, child) {
         final display = isDouble ? val.toStringAsFixed(1) : val.toInt().toString();
-        return Text('$display$suffix', style: style);
+        return Text('$display$suffix', style: style, maxLines: 1, overflow: TextOverflow.ellipsis);
       },
     );
   }
@@ -233,6 +270,7 @@ class _PerformanceSpectrumCard extends StatelessWidget {
     final isPositive = improvement.percentageChange >= 0;
 
     return Container(
+      width: double.infinity,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isPositive
@@ -254,30 +292,28 @@ class _PerformanceSpectrumCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Performance Spectrum', style: TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w500, letterSpacing: 0.3)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20)),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      isPositive ? Icons.trending_up_rounded : Icons.trending_down_rounded,
-                      size: 14,
-                      color: isPositive ? const Color(0xFF4ADE80) : const Color(0xFFF87171),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${isPositive ? '+' : ''}${improvement.percentageChange.toStringAsFixed(0)}%',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: isPositive ? const Color(0xFF4ADE80) : const Color(0xFFF87171)),
-                    ),
-                  ],
-                ),
+          _ResponsiveCardHeader(
+            title: const Text('Performance Spectrum', style: TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w500, letterSpacing: 0.3)),
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20)),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isPositive ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                    size: 14,
+                    color: isPositive ? const Color(0xFF4ADE80) : const Color(0xFFF87171),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${isPositive ? '+' : ''}${improvement.percentageChange.toStringAsFixed(0)}%',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: isPositive ? const Color(0xFF4ADE80) : const Color(0xFFF87171)),
+                  ),
+                ],
               ),
-            ],
+            ),
+            breakpoint: 260,
           ),
           const SizedBox(height: 24),
           _spectrumBar('Personal Best', best, best, Icons.emoji_events_rounded, const Color(0xFFFCD34D)),
@@ -289,6 +325,7 @@ class _PerformanceSpectrumCard extends StatelessWidget {
           const Divider(color: Colors.white24),
           const SizedBox(height: 10),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(
                 isPositive ? Icons.trending_up_rounded : Icons.trending_down_rounded,
@@ -321,7 +358,13 @@ class _PerformanceSpectrumCard extends StatelessWidget {
           children: [
             Icon(icon, color: accent, size: 16),
             const SizedBox(width: 8),
-            Text(label, style: TextStyle(fontSize: 12, color: accent.withValues(alpha: 0.9), fontWeight: FontWeight.w500)),
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(fontSize: 12, color: accent.withValues(alpha: 0.9), fontWeight: FontWeight.w500),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
             const Spacer(),
             Text('${value.toStringAsFixed(1)}%', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
           ],
@@ -387,19 +430,16 @@ class _AccuracyTrendCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Accuracy Trend', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-              GestureDetector(
-                onTap: () => _openFullScreen(context),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(20)),
-                  child: const Text('↗ Improving', style: TextStyle(fontSize: 11, color: Color(0xFF16A34A), fontWeight: FontWeight.w600)),
-                ),
+          _ResponsiveCardHeader(
+            title: const Text('Accuracy Trend', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            trailing: GestureDetector(
+              onTap: () => _openFullScreen(context),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(20)),
+                child: const Text('↗ Improving', style: TextStyle(fontSize: 11, color: Color(0xFF16A34A), fontWeight: FontWeight.w600)),
               ),
-            ],
+            ),
           ),
           const SizedBox(height: 16),
           GestureDetector(
@@ -548,7 +588,9 @@ class _FullScreenAccuracyChart extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Accuracy Trend', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white)),
+                  const Expanded(
+                    child: Text('Accuracy Trend', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white)),
+                  ),
                   IconButton(
                     icon: const Icon(Icons.close_rounded, color: Colors.white),
                     onPressed: () => Navigator.pop(context),
@@ -655,42 +697,42 @@ class _ModeScoreCardState extends State<_ModeScoreCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Score by Mode', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: meta.color.withValues(alpha: 0.08),
+          _ResponsiveCardHeader(
+            title: const Text('Score by Mode', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: meta.color.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: meta.color.withValues(alpha: 0.2)),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedKey,
+                  isDense: true,
+                  icon: Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: meta.color),
+                  style: TextStyle(fontSize: 13, color: meta.color, fontWeight: FontWeight.w700),
+                  dropdownColor: Colors.white,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: meta.color.withValues(alpha: 0.2)),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedKey,
-                    isDense: true,
-                    icon: Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: meta.color),
-                    style: TextStyle(fontSize: 13, color: meta.color, fontWeight: FontWeight.w700),
-                    dropdownColor: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    items: _modeMetas.map((m) => DropdownMenuItem(
-                      value: m.key,
-                      child: Row(
-                        children: [
-                          Icon(m.icon, size: 16, color: m.color),
-                          const SizedBox(width: 8),
-                          Text(m.label),
-                        ],
-                      ),
-                    )).toList(),
-                    onChanged: (v) {
-                      if (v != null) setState(() => _selectedKey = v);
-                    },
-                  ),
+                  items: _modeMetas
+                      .map((m) => DropdownMenuItem(
+                            value: m.key,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(m.icon, size: 16, color: m.color),
+                                const SizedBox(width: 8),
+                                Text(m.label),
+                              ],
+                            ),
+                          ))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setState(() => _selectedKey = v);
+                  },
                 ),
               ),
-            ],
+            ),
           ),
           const SizedBox(height: 24),
           AnimatedSwitcher(
@@ -712,40 +754,47 @@ class _ModeScoreCardState extends State<_ModeScoreCard> {
   }
 
   Widget _buildModeDetail(_ModeMeta meta, double score, {required Key key}) {
-    return Column(
+    return LayoutBuilder(
       key: key,
-      children: [
-        Row(
+      builder: (context, constraints) {
+        final gauge = _AnimatedGauge(value: score, color: meta.color);
+        final details = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            _AnimatedGauge(value: score, color: meta.color),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: meta.color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                    child: Text(
-                      meta.label,
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: meta.color),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(_rankLabel(score), style: TextStyle(fontSize: 13, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 6),
-                  Text(
-                    score >= 70
-                        ? 'You are performing well in this mode.'
-                        : 'Focus on this area to boost your overall score.',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
-                  ),
-                ],
-              ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(color: meta.color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+              child: Text(meta.label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: meta.color)),
+            ),
+            const SizedBox(height: 10),
+            Text(_rankLabel(score), style: TextStyle(fontSize: 13, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 6),
+            Text(
+              score >= 70 ? 'You are performing well in this mode.' : 'Focus on this area to boost your overall score.',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
             ),
           ],
-        ),
-      ],
+        );
+
+        if (constraints.maxWidth < 320) {
+          return Column(
+            children: [
+              Center(child: gauge),
+              const SizedBox(height: 16),
+              details,
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            gauge,
+            const SizedBox(width: 20),
+            Expanded(child: details),
+          ],
+        );
+      },
     );
   }
 }
@@ -871,47 +920,50 @@ class _ErrorBreakdownCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Error Breakdown', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(20)),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.open_in_full_rounded, size: 12, color: Colors.grey.shade500),
-                      const SizedBox(width: 4),
-                      Text('Tap to expand', style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
-                    ],
-                  ),
+            _ResponsiveCardHeader(
+              title: const Text('Error Breakdown', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(20)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.open_in_full_rounded, size: 12, color: Colors.grey.shade500),
+                    const SizedBox(width: 4),
+                    Text('Tap to expand', style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
+                  ],
                 ),
-              ],
+              ),
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                SizedBox(
-                  width: 130,
-                  height: 130,
-                  child: PieChart(
-                    PieChartData(
-                      sections: entries.map((e) => _pieSection(e, total)).toList(),
-                      centerSpaceRadius: 34,
-                      sectionsSpace: 2,
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final pieSize = constraints.maxWidth < 320 ? 100.0 : 130.0;
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: pieSize,
+                      height: pieSize,
+                      child: PieChart(
+                        PieChartData(
+                          sections: entries.map((e) => _pieSection(e, total)).toList(),
+                          centerSpaceRadius: pieSize * 0.26,
+                          sectionsSpace: 2,
+                        ),
+                        swapAnimationDuration: const Duration(milliseconds: 600),
+                        swapAnimationCurve: Curves.easeOutCubic,
+                      ),
                     ),
-                    swapAnimationDuration: const Duration(milliseconds: 600),
-                    swapAnimationCurve: Curves.easeOutCubic,
-                  ),
-                ),
-                const SizedBox(width: 20),
-                Expanded(
-                  child: Column(
-                    children: entries.map((e) => _pieLegend(e, total)).toList(),
-                  ),
-                ),
-              ],
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        children: entries.map((e) => _pieLegend(e, total)).toList(),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ],
         ),
@@ -942,8 +994,8 @@ class _ErrorBreakdownCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(e.label, style: const TextStyle(fontSize: 12, color: Color(0xFF475569), fontWeight: FontWeight.w500)),
-                Text('${e.count} errors ($pct%)', style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                Text(e.label, style: const TextStyle(fontSize: 12, color: Color(0xFF475569), fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
+                Text('${e.count} errors ($pct%)', style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)), overflow: TextOverflow.ellipsis),
               ],
             ),
           ),
@@ -978,7 +1030,9 @@ class _FullScreenErrorBreakdown extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Error Breakdown', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white)),
+                  const Expanded(
+                    child: Text('Error Breakdown', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white)),
+                  ),
                   IconButton(
                     icon: const Icon(Icons.close_rounded, color: Colors.white),
                     onPressed: () => Navigator.pop(context),
@@ -988,8 +1042,10 @@ class _FullScreenErrorBreakdown extends StatelessWidget {
               Text('$total total errors analyzed', style: const TextStyle(fontSize: 12, color: Colors.white54)),
               const SizedBox(height: 32),
               Expanded(
-                child: Column(
-                  children: entries.map((e) => _detailBar(e, total)).toList(),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: entries.map((e) => _detailBar(e, total)).toList(),
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
@@ -1059,7 +1115,7 @@ class _FullScreenErrorBreakdown extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════
-// 5. TOP MISPRONOUNCED WORDS — Sort + Count Dropdown
+// 5. TOP MISPRONOUNCED WORDS — Uniform red error styling
 // ═══════════════════════════════════════════════════════
 
 class _TopErrorsCard extends StatefulWidget {
@@ -1074,18 +1130,12 @@ class _TopErrorsCardState extends State<_TopErrorsCard> {
   int _limit = 5;
   String _sortBy = 'Frequency'; // Frequency | Rate | A-Z
 
-  static const List<_WordColor> _colors = [
-    _WordColor(Color(0xFFEF4444), Color(0xFFFEF2F2), Color(0xFFFECACA)),
-    _WordColor(Color(0xFFF97316), Color(0xFFFFF7ED), Color(0xFFFED7AA)),
-    _WordColor(Color(0xFFEAB308), Color(0xFFFFFBEB), Color(0xFFFDE68A)),
-    _WordColor(Color(0xFF22C55E), Color(0xFFF0FDF4), Color(0xFFBBF7D0)),
-    _WordColor(Color(0xFF3B82F6), Color(0xFFEFF6FF), Color(0xFFBFDBFE)),
-    _WordColor(Color(0xFF8B5CF6), Color(0xFFF5F3FF), Color(0xFFDDD6FE)),
-    _WordColor(Color(0xFFEC4899), Color(0xFFFDF2F8), Color(0xFFFBCFE8)),
-    _WordColor(Color(0xFF14B8A6), Color(0xFFF0FDFA), Color(0xFF99F6E4)),
-    _WordColor(Color(0xFF6366F1), Color(0xFFEEF2FF), Color(0xFFC7D2FE)),
-    _WordColor(Color(0xFF84CC16), Color(0xFFF7FEE7), Color(0xFFD9F99D)),
-  ];
+  // Same red used for "Substitution" in the Error Breakdown card, applied
+  // uniformly here so all mispronounced-word entries read as one consistent
+  // "error" color instead of a rainbow per rank.
+  static const Color _accent = Color(0xFFEF4444);
+  static const Color _bg = Color(0xFFFEF2F2);
+  static const Color _border = Color(0xFFFECACA);
 
   List<WordError> get _sortedErrors {
     final list = List<WordError>.from(widget.errors);
@@ -1139,60 +1189,59 @@ class _TopErrorsCardState extends State<_TopErrorsCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Top Mispronounced Words', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-              Row(
-                children: [
-                  // Sort dropdown
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.divider)),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _sortBy,
-                        isDense: true,
-                        icon: const Icon(Icons.sort_rounded, size: 14, color: Color(0xFF64748B)),
-                        style: const TextStyle(fontSize: 11, color: AppColors.textPrimary, fontWeight: FontWeight.w600),
-                        items: const [
-                          DropdownMenuItem(value: 'Frequency', child: Text('By Frequency')),
-                          DropdownMenuItem(value: 'Rate', child: Text('By Error Rate')),
-                          DropdownMenuItem(value: 'A-Z', child: Text('A-Z')),
-                        ],
-                        onChanged: (v) {
-                          if (v != null) setState(() => _sortBy = v);
-                        },
-                      ),
+          _ResponsiveCardHeader(
+            title: const Text('Top Mispronounced Words', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            trailing: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                // Sort dropdown
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.divider)),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _sortBy,
+                      isDense: true,
+                      icon: const Icon(Icons.sort_rounded, size: 14, color: Color(0xFF64748B)),
+                      style: const TextStyle(fontSize: 11, color: AppColors.textPrimary, fontWeight: FontWeight.w600),
+                      items: const [
+                        DropdownMenuItem(value: 'Frequency', child: Text('By Frequency')),
+                        DropdownMenuItem(value: 'Rate', child: Text('By Error Rate')),
+                        DropdownMenuItem(value: 'A-Z', child: Text('A-Z')),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) setState(() => _sortBy = v);
+                      },
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  // Count dropdown
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                    decoration: BoxDecoration(color: const Color(0xFFFEF2F2), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFFECACA))),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<int>(
-                        value: dropdownValue,
-                        isDense: true,
-                        icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Color(0xFFEF4444)),
-                        style: const TextStyle(fontSize: 11, color: Color(0xFFEF4444), fontWeight: FontWeight.w600),
-                        items: options.map((o) => DropdownMenuItem(value: o, child: Text('Top $o'))).toList(),
-                        onChanged: (v) {
-                          if (v != null) setState(() => _limit = v);
-                        },
-                      ),
+                ),
+                // Count dropdown
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                  decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(20), border: Border.all(color: _border)),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<int>(
+                      value: dropdownValue,
+                      isDense: true,
+                      icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: _accent),
+                      style: const TextStyle(fontSize: 11, color: _accent, fontWeight: FontWeight.w600),
+                      items: options.map((o) => DropdownMenuItem(value: o, child: Text('Top $o'))).toList(),
+                      onChanged: (v) {
+                        if (v != null) setState(() => _limit = v);
+                      },
                     ),
                   ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
+            breakpoint: 340,
           ),
           const SizedBox(height: 16),
           ...visible.asMap().entries.map((entry) {
             final idx = entry.key;
             final word = entry.value;
-            final c = _colors[idx % _colors.length];
             return TweenAnimationBuilder<double>(
               key: ValueKey('${word.word}_$_sortBy'),
               tween: Tween(begin: 0, end: 1),
@@ -1204,7 +1253,7 @@ class _TopErrorsCardState extends State<_TopErrorsCard> {
                   child: Transform.translate(offset: Offset(0, (1 - t) * 12), child: child),
                 );
               },
-              child: _wordErrorCard(word, idx + 1, c),
+              child: _wordErrorCard(word, idx + 1),
             );
           }),
         ],
@@ -1212,17 +1261,17 @@ class _TopErrorsCardState extends State<_TopErrorsCard> {
     );
   }
 
-  Widget _wordErrorCard(WordError word, int rank, _WordColor colors) {
+  Widget _wordErrorCard(WordError word, int rank) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: colors.bg, borderRadius: BorderRadius.circular(12), border: Border.all(color: colors.border)),
+      decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(12), border: Border.all(color: _border)),
       child: Row(
         children: [
           Container(
             width: 32,
             height: 32,
-            decoration: BoxDecoration(color: colors.accent, shape: BoxShape.circle),
+            decoration: const BoxDecoration(color: _accent, shape: BoxShape.circle),
             child: Center(child: Text('$rank', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700))),
           ),
           const SizedBox(width: 12),
@@ -1230,16 +1279,17 @@ class _TopErrorsCardState extends State<_TopErrorsCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('"${word.word}"', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                Text('"${word.word}"', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary), overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 2),
-                Text('Wrong ${word.errorCount}/${word.totalCount} times', style: TextStyle(fontSize: 11, color: colors.accent)),
+                Text('Wrong ${word.errorCount}/${word.totalCount} times', style: const TextStyle(fontSize: 11, color: _accent), overflow: TextOverflow.ellipsis),
               ],
             ),
           ),
+          const SizedBox(width: 8),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text('${word.errorRate.toStringAsFixed(0)}%', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: colors.accent)),
+              Text('${word.errorRate.toStringAsFixed(0)}%', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: _accent)),
               const Text('error rate', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
             ],
           ),
@@ -1295,41 +1345,39 @@ class _StatsGridCardState extends State<_StatsGridCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Your Stats', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(20)),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: ['Grid', 'List', 'Carousel'].map((v) {
-                    final isActive = _view == v;
-                    return GestureDetector(
-                      onTap: () => setState(() => _view = v),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: isActive ? Colors.white : Colors.transparent,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: isActive ? [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 4, offset: const Offset(0, 1))] : null,
-                        ),
-                        child: Text(
-                          v,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                            color: isActive ? AppColors.textPrimary : const Color(0xFF94A3B8),
-                          ),
+          _ResponsiveCardHeader(
+            title: const Text('Your Stats', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(20)),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: ['Grid', 'List', 'Carousel'].map((v) {
+                  final isActive = _view == v;
+                  return GestureDetector(
+                    onTap: () => setState(() => _view = v),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isActive ? Colors.white : Colors.transparent,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: isActive ? [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 4, offset: const Offset(0, 1))] : null,
+                      ),
+                      child: Text(
+                        v,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                          color: isActive ? AppColors.textPrimary : const Color(0xFF94A3B8),
                         ),
                       ),
-                    );
-                  }).toList(),
-                ),
+                    ),
+                  );
+                }).toList(),
               ),
-            ],
+            ),
+            breakpoint: 300,
           ),
           const SizedBox(height: 16),
           AnimatedSwitcher(
@@ -1355,15 +1403,20 @@ class _StatsGridCardState extends State<_StatsGridCard> {
   }
 
   Widget _gridLayout(List<_GridStat> items) {
-    return GridView.count(
+    return LayoutBuilder(
       key: const ValueKey('grid'),
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      childAspectRatio: 1.3,
-      children: items.map((s) => _gridItem(s)).toList(),
+      builder: (context, constraints) {
+        final crossAxisCount = constraints.maxWidth < 260 ? 1 : 2;
+        return GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: crossAxisCount,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: crossAxisCount == 1 ? 3.2 : 1.3,
+          children: items.map((s) => _gridItem(s)).toList(),
+        );
+      },
     );
   }
 
@@ -1409,7 +1462,7 @@ class _StatsGridCardState extends State<_StatsGridCard> {
                   style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: stat.color),
                 ),
                 const SizedBox(height: 4),
-                Text(stat.label, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)), textAlign: TextAlign.center),
+                Text(stat.label, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)), textAlign: TextAlign.center, overflow: TextOverflow.ellipsis, maxLines: 2),
               ],
             ),
           );
@@ -1443,7 +1496,7 @@ class _StatsGridCardState extends State<_StatsGridCard> {
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: stat.color),
           ),
           const SizedBox(height: 4),
-          Text(stat.label, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)), textAlign: TextAlign.center),
+          Text(stat.label, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)), textAlign: TextAlign.center, overflow: TextOverflow.ellipsis, maxLines: 2),
         ],
       ),
     );
@@ -1466,7 +1519,8 @@ class _StatsGridCardState extends State<_StatsGridCard> {
             child: Icon(stat.icon, size: 18, color: stat.color),
           ),
           const SizedBox(width: 12),
-          Expanded(child: Text(stat.label, style: const TextStyle(fontSize: 13, color: Color(0xFF475569), fontWeight: FontWeight.w500))),
+          Expanded(child: Text(stat.label, style: const TextStyle(fontSize: 13, color: Color(0xFF475569), fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
+          const SizedBox(width: 8),
           _AnimatedCounter(
             value: stat.rawValue,
             isDouble: stat.isDouble,
@@ -1477,9 +1531,7 @@ class _StatsGridCardState extends State<_StatsGridCard> {
       ),
     );
   }
-}  
-
-
+}
 
 // ── Data Models (unchanged — match backend contract) ────
 
@@ -1567,11 +1619,4 @@ class TotalStats {
         errors: (json['errors'] as num?)?.toInt() ?? 0,
         minutes: (json['minutes'] as num?)?.toInt() ?? 0,
       );
-}
-
-class _WordColor {
-  final Color accent;
-  final Color bg;
-  final Color border;
-  const _WordColor(this.accent, this.bg, this.border);
 }

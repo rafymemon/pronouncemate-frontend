@@ -1,7 +1,6 @@
 // screens/practice_session_screen.dart
-// Practice flow for mistake words, with live word-by-word coloring
-// while the user is still speaking (via WebSocket), reconciled against
-// the accurate backend pipeline once recording stops.
+// Practice flow for mistake words. Same Start Recording -> live coloring
+// -> Evaluate -> summary flow as active_session_screen.dart.
 
 import 'dart:async';
 import 'dart:io';
@@ -14,6 +13,8 @@ import '../widgets/pronunciation_word_display.dart';
 import '../widgets/session_stats_bar.dart';
 import '../services/recording_service.dart';
 import '../services/practice_websocket_service.dart';
+
+enum _PracticeState { idle, recording, processing, done }
 
 class PracticeSessionScreen extends StatefulWidget {
   final List<MistakeWord> mistakeWords;
@@ -35,8 +36,8 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
   final RecordingService _rec = RecordingService();
   final PracticeWebSocketService _ws = PracticeWebSocketService();
 
-  bool _isRecording = false;
-  bool _isProcessing = false;
+  _PracticeState _state = _PracticeState.idle;
+  bool _scriptLoadFailed = false;
   PracticeResult? _result;
   String? _practiceScript;
   List<DisplayWord> _liveWords = [];
@@ -45,6 +46,8 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
   final Stopwatch _stopwatch = Stopwatch();
   Timer? _timer;
   Duration _elapsed = Duration.zero;
+
+  static const _minRecordingSeconds = 3;
 
   @override
   void initState() {
@@ -66,7 +69,8 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
       widget.mistakeWords,
       mode: widget.mode,
     );
-    if (response['success']) {
+
+    if (response['success'] == true) {
       setState(() {
         _practiceScript = response['practice_script'];
         _liveWords = _practiceScript!
@@ -74,18 +78,29 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
             .where((w) => w.trim().isNotEmpty)
             .map((w) => DisplayWord(w))
             .toList();
+        _scriptLoadFailed = false;
       });
+    } else {
+      setState(() => _scriptLoadFailed = true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(response['error']?.toString() ??
+                  'Failed to load practice script')),
+        );
+      }
     }
   }
 
   Future<void> _startRecording() async {
-  if (_practiceScript == null || _practiceScript!.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Practice script not loaded yet — please wait or go back and retry')),
-    );
-    return;
-  }
-  if (!await _rec.hasPermission()) {
+    if (_practiceScript == null || _practiceScript!.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Practice script not loaded yet. Go back and retry.')),
+      );
+      return;
+    }
+    if (!await _rec.hasPermission()) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Microphone permission required')),
       );
@@ -93,7 +108,7 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
     }
 
     setState(() {
-      _isRecording = true;
+      _state = _PracticeState.recording;
       for (final w in _liveWords) {
         w.status = WordStatus.pending;
       }
@@ -104,15 +119,25 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
       ..reset()
       ..start();
     _timer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      if (!mounted) return;
       setState(() => _elapsed = _stopwatch.elapsed);
     });
 
-    await _ws.connect(_practiceScript ?? '');
+    await _ws.connect(_practiceScript!);
     _wsSub = _ws.wordResults.listen((result) {
+      if (!mounted) return;
       if (result.wordIndex < 0 || result.wordIndex >= _liveWords.length) return;
       setState(() {
-        _liveWords[result.wordIndex].status =
-            result.correct ? WordStatus.correct : WordStatus.error;
+        switch (result.status) {
+          case 'correct':
+            _liveWords[result.wordIndex].status = WordStatus.correct;
+            break;
+          case 'skipped':
+            _liveWords[result.wordIndex].status = WordStatus.skipped;
+            break;
+          default:
+            _liveWords[result.wordIndex].status = WordStatus.error;
+        }
       });
     });
 
@@ -120,29 +145,34 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
     stream.listen((chunk) => _ws.sendAudioChunk(chunk));
   }
 
-  Future<void> _stopAndSubmit() async {
-    if (!_isRecording) return;
+  Future<void> _evaluate() async {
+    if (_stopwatch.elapsed.inSeconds < _minRecordingSeconds) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Recording too short — try again.')),
+      );
+      return;
+    }
 
     _stopwatch.stop();
     _timer?.cancel();
-    setState(() => _isRecording = false);
 
     final file = await _rec.stopAndSaveWav();
     await _wsSub?.cancel();
     await _ws.close();
 
-    if (file != null) {
-      _submitPractice(file);
-    } else {
+    if (file == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to save recording')),
       );
+      setState(() => _state = _PracticeState.idle);
+      return;
     }
+
+    setState(() => _state = _PracticeState.processing);
+    await _submitPractice(file);
   }
 
   Future<void> _submitPractice(File audioFile) async {
-    setState(() => _isProcessing = true);
-
     try {
       final result = await PracticeApiService.submitPractice(
         audioFile,
@@ -151,30 +181,42 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
         mode: widget.mode,
       );
 
-      // Reconcile provisional colors with the accurate backend pipeline.
       final strugglingWords = result.stillStruggling
           .map((w) => (w['word'] as String).toLowerCase())
           .toSet();
 
       for (final w in _liveWords) {
         final cleanWord = w.text.toLowerCase().replaceAll(RegExp(r'[^a-z]'), '');
-        if (w.status != WordStatus.pending) {
-          w.status = strugglingWords.contains(cleanWord)
-              ? WordStatus.error
-              : WordStatus.correct;
+        if (strugglingWords.contains(cleanWord)) {
+          w.status = WordStatus.error;
+        } else if (w.status != WordStatus.pending) {
+          w.status = WordStatus.correct;
+        } else {
+          // Never judged live (e.g. word never reached) but backend has
+          // no complaint about it — treat as a deletion.
+          w.status = WordStatus.skipped;
         }
       }
 
       setState(() {
         _result = result;
-        _isProcessing = false;
+        _state = _PracticeState.done;
       });
     } catch (e) {
-      setState(() => _isProcessing = false);
+      setState(() => _state = _PracticeState.idle);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
     }
+  }
+
+  Future<void> _end() async {
+    await _wsSub?.cancel();
+    await _ws.close();
+    await _rec.stopAndSaveWav();
+    _stopwatch.stop();
+    _timer?.cancel();
+    if (mounted) Navigator.pop(context);
   }
 
   String _formatDuration(Duration d) {
@@ -189,6 +231,14 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
       appBar: AppBar(
         title: const Text('Practice Mistakes'),
         backgroundColor: Colors.deepOrange,
+        actions: [
+          if (_state == _PracticeState.recording)
+            TextButton.icon(
+              onPressed: _end,
+              icon: const Icon(Icons.stop_circle_outlined, color: Colors.white, size: 18),
+              label: const Text('End', style: TextStyle(color: Colors.white)),
+            ),
+        ],
       ),
       body: _result != null ? _buildResultView() : _buildPracticeView(),
     );
@@ -204,18 +254,32 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (_isRecording || _result != null)
+            if (_state == _PracticeState.recording)
               SessionStatsBar(
                 timerLabel: _formatDuration(_elapsed),
                 wordsLabel: '$spokenCount / ${_liveWords.length} words',
                 scoreLabel: '--',
                 accentColor: Colors.deepOrange,
               ),
-            if (_practiceScript != null) ...[
-              const Text(
-                'Practice Script:',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            if (_scriptLoadFailed)
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.red[50],
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.red[200]!),
+                ),
+                child: Row(children: [
+                  Icon(Icons.error_outline, color: Colors.red[700]),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                      child: Text('Practice script failed to load. Pull down to retry.')),
+                ]),
               ),
+            if (_practiceScript != null) ...[
+              const Text('Practice Script:',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(16),
@@ -227,10 +291,8 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
               ),
             ],
             const SizedBox(height: 24),
-            const Text(
-              'Words to Practice:',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
+            const Text('Words to Practice:',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -244,40 +306,55 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
               ).toList(),
             ),
             const SizedBox(height: 32),
-            Center(
-              child: GestureDetector(
-                onTapDown: (_) => _startRecording(),
-                onTapUp: (_) => _stopAndSubmit(),
-                onTapCancel: () => _stopAndSubmit(),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: _isRecording ? 100 : 80,
-                  height: _isRecording ? 100 : 80,
-                  decoration: BoxDecoration(
-                    color: _isRecording ? Colors.red : Colors.deepOrange,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: (_isRecording ? Colors.red : Colors.deepOrange)
-                            .withOpacity(0.3),
-                        blurRadius: 20,
-                        spreadRadius: 5,
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    _isRecording ? Icons.stop : Icons.mic,
-                    color: Colors.white,
-                    size: 36,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            if (_isProcessing)
-              const Center(child: CircularProgressIndicator()),
+            _buildBottomBar(),
             const SizedBox(height: 24),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomBar() {
+    switch (_state) {
+      case _PracticeState.idle:
+        return _btn(
+          label: 'Start Recording',
+          icon: Icons.mic_rounded,
+          color: Colors.deepOrange,
+          onTap: _startRecording,
+        );
+      case _PracticeState.recording:
+        return _btn(
+          label: 'Evaluate',
+          icon: Icons.mic_rounded,
+          color: Colors.deepOrange,
+          onTap: _evaluate,
+        );
+      case _PracticeState.processing:
+        return const Center(child: CircularProgressIndicator());
+      case _PracticeState.done:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _btn({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback? onTap,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, size: 18),
+        label: Text(label,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       ),
     );
@@ -298,41 +375,27 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.green[200]!),
             ),
-            child: Row(
-              children: [
-                Icon(Icons.celebration, color: Colors.green[700]),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    result.message,
+            child: Row(children: [
+              Icon(Icons.celebration, color: Colors.green[700]),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(result.message,
                     style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.green[800],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+                        fontSize: 16,
+                        color: Colors.green[800],
+                        fontWeight: FontWeight.w500)),
+              ),
+            ]),
           ),
           const SizedBox(height: 24),
           Center(
-            child: Column(
-              children: [
-                Text(
-                  result.score.toStringAsFixed(1),
+            child: Column(children: [
+              Text(result.score.toStringAsFixed(1),
                   style: const TextStyle(
-                    fontSize: 64,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.deepOrange,
-                  ),
-                ),
-                Text(
-                  '${result.grade} — ${result.gradeLabel}',
-                  style: const TextStyle(fontSize: 20),
-                ),
-              ],
-            ),
+                      fontSize: 64, fontWeight: FontWeight.bold, color: Colors.deepOrange)),
+              Text('${result.grade} — ${result.gradeLabel}',
+                  style: const TextStyle(fontSize: 20)),
+            ]),
           ),
           const SizedBox(height: 24),
           _buildProgressSection('Cleared', result.clearedWords, Colors.green, Icons.check_circle),
@@ -383,43 +446,27 @@ class _PracticeSessionScreenState extends State<PracticeSessionScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Icon(icon, color: color),
-            const SizedBox(width: 8),
-            Text(
-              '$title (${items.length})',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-          ],
-        ),
+        Row(children: [
+          Icon(icon, color: color),
+          const SizedBox(width: 8),
+          Text('$title (${items.length})',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+        ]),
         const SizedBox(height: 8),
         ...items.map((item) => Card(
           margin: const EdgeInsets.only(bottom: 8),
           child: ListTile(
             leading: CircleAvatar(
               backgroundColor: color.withOpacity(0.2),
-              child: Text(
-                item['word'][0].toUpperCase(),
-                style: TextStyle(color: color, fontWeight: FontWeight.bold),
-              ),
+              child: Text(item['word'][0].toUpperCase(),
+                  style: TextStyle(color: color, fontWeight: FontWeight.bold)),
             ),
             title: Text(item['word']),
             subtitle: item['improvement'] != null
                 ? Text('Improved by ${item['improvement']} points')
                 : null,
-            trailing: Text(
-              '${item['current_score']?.toStringAsFixed(0) ?? 'N/A'}',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
+            trailing: Text('${item['current_score']?.toStringAsFixed(0) ?? 'N/A'}',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
           ),
         )).toList(),
         const SizedBox(height: 16),

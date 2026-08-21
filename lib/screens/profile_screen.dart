@@ -25,11 +25,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _dailyReminders     = true;
   bool _autoSaveRecordings = false;
 
-  // ── Level config ─────────────────────────────────────────
-  static const _levelOrder = [
-    'beginner', 'intermediate', 'upper_intermediate', 'advanced', 'fluent'
-  ];
-
+  // ── Level config (still used for the header badge/gradient) ──
   static const _levelLabels = {
     'beginner':           'Beginner',
     'intermediate':       'Intermediate',
@@ -83,17 +79,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String get _memberSince => _profile['member_since'] ?? '';
 
   String get _storedLevel   => _profile['proficiency_level'] ?? 'beginner';
-  String get _computedLevel => _profile['computed_level']    ?? 'beginner';
-  String get _levelReason   => _profile['level_reason']      ?? '';
 
-  int    get _sessions  => _profile['total_sessions']  as int?  ?? 0;
-  double get _avgScore  => (_profile['avg_accuracy']   as num?) ?.toDouble() ?? 0.0;
-  double get _bestScore => (_profile['best_score']     as num?) ?.toDouble() ?? 0.0;
-  int    get _words     => _profile['total_words']     as int?  ?? 0;
-  int    get _streak    => _profile['streak_days']     as int?  ?? 0;
   String get _favMode   => _profile['favorite_mode']   ?? 'None yet';
-
-  List   get _topErrors => _profile['top_errors']  as List? ?? [];
 
   Color  get _levelColor => _levelColors[_storedLevel] ?? AppColors.primary;
   String get _levelLabel => _levelLabels[_storedLevel] ?? 'Beginner';
@@ -108,19 +95,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   // ── API calls ────────────────────────────────────────────
-  Future<void> _updateLevel(String level) async {
-    final prev = _storedLevel;
-    setState(() => _profile['proficiency_level'] = level);
-
-    final res = await ApiService.updateProfile({'proficiency_level': level});
-    if (res['error'] != null) {
-      setState(() => _profile['proficiency_level'] = prev);
-      _showError('Could not update level');
-    } else {
-      _showSuccess('Level updated to ${_levelLabels[level]}');
-    }
-  }
-
   Future<void> _updateName(String name) async {
     final prev = _profile['first_name'];
     setState(() => _profile['first_name'] = name);
@@ -174,14 +148,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                         _buildProfileCard(),
                         const SizedBox(height: 16),
-                        _buildStatsRow(),
-                        const SizedBox(height: 16),
-                        _buildLevelSection(),
-                        const SizedBox(height: 16),
-                        if (_topErrors.isNotEmpty) ...[
-                          _buildTopErrors(),
-                          const SizedBox(height: 16),
-                        ],
                         _sectionLabel('Practice Settings'),
                         const SizedBox(height: 10),
                         _buildPracticeSettings(),
@@ -236,7 +202,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             // Avatar
             Container(
               width: 70,
@@ -261,11 +227,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(_displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                         fontSize: 21, fontWeight: FontWeight.bold,
                         color: Colors.white)),
                 const SizedBox(height: 2),
                 Text('@$_username',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                         color: Colors.white70, fontSize: 13)),
                 if (_email.isNotEmpty) ...[
@@ -276,6 +246,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(width: 4),
                     Flexible(child: Text(_email,
                         overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
                         style: const TextStyle(
                             color: Colors.white60, fontSize: 12))),
                   ]),
@@ -289,21 +260,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: Colors.white70, size: 22),
               onPressed: _showEditDialog,
               tooltip: 'Edit Profile',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
             ),
           ]),
 
           const SizedBox(height: 14),
 
-          // Member since + level badges
-          Row(children: [
-            _infoBadge(Icons.calendar_today_outlined,
-                'Joined $_memberSince'),
-            const SizedBox(width: 8),
-            _infoBadge(
-              _levelIcons[_storedLevel] ?? Icons.bar_chart_rounded,
-              _levelLabel,
-            ),
-          ]),
+          // Member since + level badges — wraps on narrow screens
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _infoBadge(Icons.calendar_today_outlined,
+                  'Joined $_memberSince'),
+              _infoBadge(
+                _levelIcons[_storedLevel] ?? Icons.bar_chart_rounded,
+                _levelLabel,
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -325,251 +301,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 fontWeight: FontWeight.w500)),
       ]),
     );
-  }
-
-  // ══ Stats Row ═══════════════════════════════════════════
-  Widget _buildStatsRow() {
-    final stats = [
-      {'value': '$_sessions',                     'label': 'Sessions'},
-      {'value': '${_avgScore.toStringAsFixed(0)}%','label': 'Avg Score'},
-      {'value': '${_bestScore.toStringAsFixed(0)}%','label': 'Best'},
-      {'value': '$_streak days',                  'label': 'Streak'},
-      {'value': '$_words',                        'label': 'Words'},
-    ];
-    return Row(
-      children: stats.map((s) {
-        final isLast = s == stats.last;
-        return Expanded(child: Row(children: [
-          Expanded(child: _statBox(s['value']!, s['label']!)),
-          if (!isLast) const SizedBox(width: 6),
-        ]));
-      }).toList(),
-    );
-  }
-
-  Widget _statBox(String value, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: const [BoxShadow(
-            color: AppColors.cardShadow, blurRadius: 6,
-            offset: Offset(0, 2))],
-      ),
-      child: Column(children: [
-        Text(value,
-            maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-                fontSize: 14, fontWeight: FontWeight.bold,
-                color: AppColors.primary)),
-        const SizedBox(height: 2),
-        Text(label,
-            maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-                fontSize: 10, color: AppColors.textSecondary)),
-      ]),
-    );
-  }
-
-  // ══ Level Section ════════════════════════════════════════
-  Widget _buildLevelSection() {
-    final bool levelsDiffer = _storedLevel != _computedLevel;
-    return _card(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Icon(_levelIcons[_storedLevel] ?? Icons.bar_chart_rounded,
-              color: _levelColor, size: 22),
-          const SizedBox(width: 10),
-          const Text('Proficiency Level',
-              style: TextStyle(fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary)),
-          const Spacer(),
-          TextButton(
-            onPressed: _showLevelPicker,
-            child: Text('Change',
-                style: TextStyle(fontSize: 13, color: AppColors.primary)),
-          ),
-        ]),
-
-        const SizedBox(height: 12),
-
-        // Progress strip
-        Row(children: _levelOrder.map((l) {
-          final idx    = _levelOrder.indexOf(l);
-          final curIdx = _levelOrder.indexOf(_storedLevel);
-          final active = idx <= curIdx;
-          return Expanded(child: Padding(
-            padding: EdgeInsets.only(
-                right: l == _levelOrder.last ? 0 : 3),
-            child: Container(
-              height: 7,
-              decoration: BoxDecoration(
-                color: active ? _levelColor : AppColors.divider,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-          ));
-        }).toList()),
-
-        const SizedBox(height: 10),
-
-        // Current and computed
-        Row(children: [
-          Expanded(child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Your Level: ${_levelLabels[_storedLevel]}',
-                  style: TextStyle(fontSize: 14,
-                      fontWeight: FontWeight.w700, color: _levelColor)),
-              const SizedBox(height: 2),
-              Text(_levelReason,
-                  style: const TextStyle(
-                      fontSize: 11, color: AppColors.textSecondary,
-                      height: 1.4)),
-            ],
-          )),
-          if (levelsDiffer) ...[
-            const SizedBox(width: 12),
-            _smallBadge(
-              'AI: ${_levelLabels[_computedLevel]}',
-              _levelColors[_computedLevel] ?? AppColors.primary,
-            ),
-          ],
-        ]),
-
-        // Suggest level update
-        if (levelsDiffer) ...[
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: (_levelColors[_computedLevel] ?? AppColors.primary)
-                  .withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: (_levelColors[_computedLevel] ?? AppColors.primary)
-                    .withValues(alpha: 0.2),
-              ),
-            ),
-            child: Row(children: [
-              Icon(Icons.auto_awesome_rounded,
-                  color: _levelColors[_computedLevel] ?? AppColors.primary,
-                  size: 18),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Based on your performance, PronounceMate suggests updating your level to '
-                  '${_levelLabels[_computedLevel]}.',
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: _levelColors[_computedLevel] ?? AppColors.primary,
-                      height: 1.4),
-                ),
-              ),
-              const SizedBox(width: 8),
-              TextButton(
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 4),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                onPressed: () => _updateLevel(_computedLevel),
-                child: const Text('Apply',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 12)),
-              ),
-            ]),
-          ),
-        ],
-      ]),
-    );
-  }
-
-  // ══ Top Errors ═══════════════════════════════════════════
-  Widget _buildTopErrors() {
-    return _card(child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(children: [
-          const Icon(Icons.bar_chart_rounded,
-              color: AppColors.error, size: 20),
-          const SizedBox(width: 10),
-          const Text('Most Mispronounced Words',
-              style: TextStyle(fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary)),
-        ]),
-        const SizedBox(height: 12),
-        ..._topErrors.asMap().entries.map((e) {
-          final rank  = e.key + 1;
-          final entry = e.value as Map;
-          final word  = entry['word']?.toString() ?? '';
-          final count = entry['count'] as int? ?? 0;
-          final pct   = _sessions > 0
-              ? ((count / _sessions) * 100).clamp(0, 100).toStringAsFixed(0)
-              : '0';
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(children: [
-              // Rank
-              Container(
-                width: 24, height: 24,
-                decoration: BoxDecoration(
-                  color: rank == 1
-                      ? AppColors.error.withValues(alpha: 0.15)
-                      : AppColors.surfaceVariant,
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Text('$rank',
-                      style: TextStyle(
-                          fontSize: 11, fontWeight: FontWeight.bold,
-                          color: rank == 1
-                              ? AppColors.error
-                              : AppColors.textSecondary)),
-                ),
-              ),
-              const SizedBox(width: 10),
-              // Word
-              Expanded(
-                child: Text(word,
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary)),
-              ),
-              // Count + bar
-              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text('$count errors',
-                    style: const TextStyle(
-                        fontSize: 11, color: AppColors.textSecondary)),
-                const SizedBox(height: 3),
-                Container(
-                  width: 80,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: AppColors.divider,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                  child: FractionallySizedBox(
-                    alignment: Alignment.centerLeft,
-                    widthFactor: (int.tryParse(pct) ?? 0) / 100,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: AppColors.error,
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                  ),
-                ),
-              ]),
-            ]),
-          );
-        }),
-      ],
-    ));
   }
 
   // ══ Practice Settings ════════════════════════════════════
@@ -772,16 +503,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         color: AppColors.textPrimary)),
   );
 
-  Widget _smallBadge(String text, Color color) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-    decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.25))),
-    child: Text(text, style: TextStyle(
-        fontSize: 11, color: color, fontWeight: FontWeight.w600)),
-  );
-
   // ══ Dialogs ═══════════════════════════════════════════════
   void _showEditDialog() {
     final nameCtrl = TextEditingController(text: _displayName);
@@ -830,104 +551,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
     ).whenComplete(nameCtrl.dispose);
-  }
-
-  void _showLevelPicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Center(child: Container(width: 40, height: 4,
-              decoration: BoxDecoration(color: AppColors.divider,
-                  borderRadius: BorderRadius.circular(2)))),
-          const SizedBox(height: 20),
-          const Text('Select Proficiency Level',
-              style: TextStyle(fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary)),
-          const SizedBox(height: 6),
-          const Text('Your level filters the scripts shown to you',
-              style: TextStyle(
-                  fontSize: 13, color: AppColors.textSecondary)),
-          const SizedBox(height: 20),
-
-          // Computed level suggestion
-          if (_storedLevel != _computedLevel)
-            Container(
-              margin: const EdgeInsets.only(bottom: 14),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(children: [
-                const Icon(Icons.auto_awesome_rounded,
-                    color: AppColors.primary, size: 16),
-                const SizedBox(width: 8),
-                Expanded(child: Text(
-                  'PronounceMate suggests: '
-                  '${_levelLabels[_computedLevel]}',
-                  style: const TextStyle(
-                      fontSize: 12, color: AppColors.primary),
-                )),
-              ]),
-            ),
-
-          ..._levelOrder.map((l) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: GestureDetector(
-              onTap: () {
-                Navigator.pop(ctx);
-                _updateLevel(l);
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: _storedLevel == l
-                      ? (_levelColors[l] ?? AppColors.primary)
-                      : AppColors.surfaceVariant,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(children: [
-                  Icon(
-                    _levelIcons[l] ?? Icons.bar_chart_rounded,
-                    color: _storedLevel == l
-                        ? Colors.white
-                        : (_levelColors[l] ?? AppColors.primary),
-                    size: 20,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(_levelLabels[l] ?? l,
-                        style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: _storedLevel == l
-                                ? Colors.white
-                                : AppColors.textPrimary)),
-                  ),
-                  if (_computedLevel == l && _storedLevel != l)
-                    _smallBadge('Suggested',
-                        _levelColors[l] ?? AppColors.primary),
-                  if (_storedLevel == l)
-                    const Icon(Icons.check_circle,
-                        color: Colors.white, size: 20),
-                ]),
-              ),
-            ),
-          )),
-        ]),
-      ),
-    );
   }
 
   void _showAccentPicker() {

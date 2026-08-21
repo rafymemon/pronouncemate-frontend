@@ -6,6 +6,7 @@ import 'package:just_audio/just_audio.dart';
 import '../theme/app_theme.dart';
 import '../services/recording_service.dart';
 import '../services/api_service.dart';
+import '../services/practice_websocket_service.dart';
 import '../config.dart';
 import '../models/word_status.dart';
 import '../widgets/pronunciation_word_display.dart';
@@ -41,6 +42,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
 
   final RecordingService _rec = RecordingService();
   final AudioPlayer _player = AudioPlayer();
+  final PracticeWebSocketService _ws = PracticeWebSocketService();
 
   _SessionState _state = _SessionState.idle;
   late List<DisplayWord> _words;
@@ -52,9 +54,8 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
   Duration _elapsed = Duration.zero;
   late Stopwatch _stopwatch;
   late String _sessionId;
+  StreamSubscription? _wsSub;
 
-  // Minimum recording length before we let Evaluate run — protects
-  // against accidental taps producing near-empty audio (0-word transcripts).
   static const _minRecordingSeconds = 3;
 
   @override
@@ -75,10 +76,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       _snack('Microphone permission required', error: true);
       return;
     }
-    await _rec.start();
-    _stopwatch.reset();
-    _stopwatch.start();
-    _startTimer();
+
     setState(() {
       _state = _SessionState.recording;
       _latestFeedback = null;
@@ -91,6 +89,34 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
         w.audioPath = null;
       }
     });
+
+    _stopwatch.reset();
+    _stopwatch.start();
+    _startTimer();
+
+    // Live layer: word-by-word coloring while speaking.
+    await _ws.connect(widget.scriptText);
+    _wsSub = _ws.wordResults.listen((result) {
+      if (!mounted) return;
+      if (result.wordIndex < 0 || result.wordIndex >= _words.length) return;
+      print(
+          '🎤 [UI] setState idx=${result.wordIndex} status=${result.status}'); // TEMP
+      setState(() {
+        switch (result.status) {
+          case 'correct':
+            _words[result.wordIndex].status = WordStatus.correct;
+            break;
+          case 'skipped':
+            _words[result.wordIndex].status = WordStatus.skipped;
+            break;
+          default:
+            _words[result.wordIndex].status = WordStatus.error;
+        }
+      });
+    });
+
+    final stream = await _rec.startLiveStream();
+    stream.listen((chunk) => _ws.sendAudioChunk(chunk));
   }
 
   Future<void> _evaluate() async {
@@ -100,7 +126,10 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     }
 
     _stopwatch.stop();
-    final file = await _rec.stop();
+    final file = await _rec.stopAndSaveWav();
+    await _wsSub?.cancel();
+    await _ws.close();
+
     if (file == null) {
       _snack('Recording failed', error: true);
       return;
@@ -135,7 +164,8 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       for (final w in _words) {
         final queue = wordQueue[w.text];
         if (queue == null || queue.isEmpty) {
-          w.status = WordStatus.error;
+          // Word never appeared in the transcript = deletion.
+          w.status = WordStatus.skipped;
           w.type = 'skipped';
           continue;
         }
@@ -230,10 +260,12 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     } catch (_) {}
   }
 
-  void _end() {
-    _rec.stop();
+  Future<void> _end() async {
+    await _wsSub?.cancel();
+    await _ws.close();
+    await _rec.stopAndSaveWav();
     _stopwatch.stop();
-    Navigator.pop(context);
+    if (mounted) Navigator.pop(context);
   }
 
   void _snack(String msg, {bool error = false}) {
@@ -375,17 +407,25 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.red.shade50,
+                  color: w.status == WordStatus.skipped
+                      ? const Color(0xFFFFF3CD)
+                      : Colors.red.shade50,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(w.text,
                     style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: Colors.red.shade700)),
+                        color: w.status == WordStatus.skipped
+                            ? const Color(0xFF856404)
+                            : Colors.red.shade700)),
               ),
               const SizedBox(height: 14),
-              Text(w.tip ?? '',
+              Text(
+                  w.tip ??
+                      (w.status == WordStatus.skipped
+                          ? 'This word was skipped — try including it next time.'
+                          : ''),
                   style: const TextStyle(
                       fontSize: 15, color: _textGrey, height: 1.55)),
               const SizedBox(height: 20),
@@ -500,6 +540,8 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
   void dispose() {
     _rec.dispose();
     _player.dispose();
+    _ws.dispose();
+    _wsSub?.cancel();
     super.dispose();
   }
 }
