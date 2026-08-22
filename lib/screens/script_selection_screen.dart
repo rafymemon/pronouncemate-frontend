@@ -59,7 +59,7 @@ class ScriptSelectionScreen extends StatefulWidget {
 
   static Widget withFilters({
     required String preselectedMode,
-    required String preselectedLevel,
+    String? preselectedLevel, // now optional — Script-Based won't pass one
   }) {
     return ScriptSelectionScreen(
       preselectedMode: preselectedMode,
@@ -128,6 +128,10 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
         _selectedLevel = null;
         _currentStep = 1;
       }
+    } else if (_selectedMode == ScriptMode.scriptBased) {
+      // Script-Based never needs a proficiency level — skip straight
+      // to the script list (Built-in + My Scripts tabs).
+      _currentStep = 2;
     }
 
     if (_currentStep == 2 && !_isScriptBasedMode) {
@@ -249,10 +253,10 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
     }
   }
 
-  void _goBack() {
+   void _goBack() {
     if (_currentStep == 2 &&
         widget.preselectedMode != null &&
-        widget.preselectedLevel != null) {
+        (widget.preselectedLevel != null || _isScriptBasedMode)) {
       Navigator.pop(context);
       return;
     }
@@ -650,9 +654,11 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
           ),
         ];
         break;
-      case 2:
+       case 2:
         title = _selectedMode != null
-            ? '${_selectedMode!.label} • ${_selectedLevel!.label}'
+            ? (_selectedLevel != null
+                ? '${_selectedMode!.label} • ${_selectedLevel!.label}'
+                : _selectedMode!.label)
             : 'All Scripts';
         actions = [
           TextButton(
