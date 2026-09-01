@@ -1,7 +1,14 @@
 // lib/screens/progress_analytics_screen.dart
 
+import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 
@@ -50,6 +57,10 @@ class ProgressAnalyticsScreen extends StatefulWidget {
 class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
   bool _loading = true;
   String? _error;
+  bool _exporting = false;
+
+  // Used to capture the analytics content as an image for "Share as Image".
+  final GlobalKey _shareBoundaryKey = GlobalKey();
 
   // Data
   List<SessionData> _sessions = [];
@@ -113,7 +124,7 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.share_outlined),
-            onPressed: _shareProgress,
+            onPressed: (_loading || _error != null) ? null : _shareProgress,
           ),
         ],
       ),
@@ -148,62 +159,200 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadData,
-      color: AppColors.accent,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _PerformanceSpectrumCard(improvement: _improvement, sessions: _sessions),
-            const SizedBox(height: 16),
-            if (_sessions.length >= 2) _AccuracyTrendCard(sessions: _sessions),
-            if (_sessions.length >= 2) const SizedBox(height: 16),
-            _ModeScoreCard(modeScores: _modeScores),
-            const SizedBox(height: 16),
-            _ErrorBreakdownCard(breakdown: _errorBreakdown),
-            const SizedBox(height: 16),
-            _TopErrorsCard(errors: _topErrors),
-            const SizedBox(height: 16),
-            _StatsGridCard(stats: _totalStats),
-            const SizedBox(height: 16),
-          ],
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final horizontalPadding = constraints.maxWidth < 360 ? 12.0 : 16.0;
+        return RefreshIndicator(
+          onRefresh: _loadData,
+          color: AppColors.accent,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: RepaintBoundary(
+                  key: _shareBoundaryKey,
+                  child: Container(
+                    // Solid background so the exported PNG isn't transparent.
+                    color: AppColors.background,
+                    padding: EdgeInsets.all(horizontalPadding),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _PerformanceSpectrumCard(improvement: _improvement, sessions: _sessions),
+                        const SizedBox(height: 16),
+                        if (_sessions.length >= 2) _AccuracyTrendCard(sessions: _sessions),
+                        if (_sessions.length >= 2) const SizedBox(height: 16),
+                        _ModeScoreCard(modeScores: _modeScores),
+                        const SizedBox(height: 16),
+                        _ErrorBreakdownCard(breakdown: _errorBreakdown),
+                        const SizedBox(height: 16),
+                        _TopErrorsCard(errors: _topErrors),
+                        const SizedBox(height: 16),
+                        _StatsGridCard(stats: _totalStats),
+                        const SizedBox(height: 16),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
   // ── Share ─────────────────────────────────────────────
+
   void _shareProgress() {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 20),
-            const Text('Share Your Progress', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(Icons.image, color: AppColors.primary),
-              title: const Text('Share as Image'),
-              onTap: () => Navigator.pop(ctx),
-            ),
-            ListTile(
-              leading: const Icon(Icons.text_snippet, color: AppColors.primary),
-              title: const Text('Share as Text'),
-              onTap: () => Navigator.pop(ctx),
-            ),
-            const SizedBox(height: 16),
-          ],
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 20),
+              const Text('Share Your Progress', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.image, color: AppColors.primary),
+                title: const Text('Share as Image'),
+                subtitle: const Text('A snapshot of this screen'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _shareAsImage();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.text_snippet, color: AppColors.primary),
+                title: const Text('Share as Text'),
+                subtitle: const Text('A quick summary you can paste anywhere'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _shareAsText();
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Future<void> _shareAsText() async {
+    final buffer = StringBuffer()
+      ..writeln('🎤 My PronounceMate Progress')
+      ..writeln();
+
+    if (_improvement.percentageChange != 0 && _sessions.length >= 2) {
+      final sign = _improvement.percentageChange >= 0 ? '+' : '';
+      buffer.writeln('📈 Accuracy change: $sign${_improvement.percentageChange.toStringAsFixed(0)}%');
+    }
+    if (_sessions.isNotEmpty) {
+      final best = _sessions.map((s) => s.accuracy).reduce((a, b) => a > b ? a : b);
+      final latest = _sessions.last.accuracy;
+      buffer.writeln('🏆 Personal best: ${best.toStringAsFixed(1)}%');
+      buffer.writeln('⚡ Latest session: ${latest.toStringAsFixed(1)}%');
+      buffer.writeln();
+    }
+
+    buffer
+      ..writeln('📊 Total sessions: ${_totalStats.sessions}')
+      ..writeln('🗣️ Words practiced: ${_totalStats.words}')
+      ..writeln('✅ Errors corrected: ${_totalStats.errors}')
+      ..writeln('⏱️ Practice time: ${(_totalStats.minutes / 60).toStringAsFixed(1)}h');
+
+    if (_topErrors.isNotEmpty) {
+      buffer
+        ..writeln()
+        ..writeln('Word I\'m working on: "${_topErrors.first.word}"');
+    }
+
+    buffer
+      ..writeln()
+      ..writeln('Practicing pronunciation with PronounceMate 🚀');
+
+    try {
+      await Share.share(buffer.toString());
+    } catch (e) {
+      _showExportError('Could not open the share sheet.');
+    }
+  }
+
+  Future<void> _shareAsImage() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    _showGeneratingSnackBar();
+
+    try {
+      // Let the snackbar/frame settle before we snapshot the boundary.
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      final boundary = _shareBoundaryKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) {
+        _showExportError('Nothing to export yet — try again in a moment.');
+        return;
+      }
+
+      // Cap the pixel ratio on very tall content so the PNG doesn't
+      // balloon in size (all cards render even though only part is visible
+      // on screen, since RepaintBoundary captures full layout size).
+      final heightFactor = boundary.size.height > 0 ? 2400 / boundary.size.height : 1.0;
+      final pixelRatio = heightFactor.clamp(1.0, 2.5);
+
+      final image = await boundary.toImage(pixelRatio: pixelRatio);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      final bytes = byteData?.buffer.asUint8List();
+
+      if (bytes == null) {
+        _showExportError('Could not generate the image.');
+        return;
+      }
+
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/pronouncemate_progress_${DateTime.now().millisecondsSinceEpoch}.png');
+      await file.writeAsBytes(bytes as Uint8List);
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: 'My pronunciation progress on PronounceMate 🎤',
+      );
+    } catch (e) {
+      _showExportError('Something went wrong exporting the image.');
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  void _showGeneratingSnackBar() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+            SizedBox(width: 12),
+            Text('Generating image…'),
+          ],
+        ),
+        duration: Duration(seconds: 3),
+      ),
+    );
+  }
+
+  void _showExportError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red.shade600),
     );
   }
 }
@@ -855,6 +1004,13 @@ class _AnimatedGauge extends StatelessWidget {
 
 // ═══════════════════════════════════════════════════════
 // 4. ERROR BREAKDOWN — Tap to Expand Full Screen
+//
+// 3 categories only (Substitution / Omission / Insertion), matching
+// PhonemeError.ERROR_TYPES on the backend exactly. "Stress" was dropped:
+// the backend doesn't detect stress errors at all yet, so a 4th category
+// here would always read 0 and imply a capability that doesn't exist.
+// "Skipped" (whole words never spoken) is tracked separately elsewhere
+// (session stats) and isn't part of this per-phoneme breakdown.
 // ═══════════════════════════════════════════════════════
 
 class _ErrorEntry {
@@ -909,8 +1065,7 @@ class _ErrorBreakdownCard extends StatelessWidget {
 
     final entries = [
       _ErrorEntry('Substitution', breakdown.substitution, const Color(0xFFEF4444)),
-      _ErrorEntry('Omission', breakdown.deletion, const Color(0xFFF59E0B)),
-      _ErrorEntry('Stress', breakdown.stress, const Color(0xFF8B5CF6)),
+      _ErrorEntry('Omission', breakdown.omission, const Color(0xFFF59E0B)),
       _ErrorEntry('Insertion', breakdown.insertion, const Color(0xFF06B6D4)),
     ];
 
@@ -1014,8 +1169,7 @@ class _FullScreenErrorBreakdown extends StatelessWidget {
     final total = breakdown.total;
     final entries = [
       _ErrorEntry('Substitution', breakdown.substitution, const Color(0xFFEF4444)),
-      _ErrorEntry('Omission', breakdown.deletion, const Color(0xFFF59E0B)),
-      _ErrorEntry('Stress', breakdown.stress, const Color(0xFF8B5CF6)),
+      _ErrorEntry('Omission', breakdown.omission, const Color(0xFFF59E0B)),
       _ErrorEntry('Insertion', breakdown.insertion, const Color(0xFF06B6D4)),
     ];
 
@@ -1407,13 +1561,16 @@ class _StatsGridCardState extends State<_StatsGridCard> {
       key: const ValueKey('grid'),
       builder: (context, constraints) {
         final crossAxisCount = constraints.maxWidth < 260 ? 1 : 2;
+        final aspectRatio = crossAxisCount == 1
+            ? 3.2
+            : (constraints.maxWidth < 340 ? 1.05 : 1.3);
         return GridView.count(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           crossAxisCount: crossAxisCount,
           mainAxisSpacing: 12,
           crossAxisSpacing: 12,
-          childAspectRatio: crossAxisCount == 1 ? 3.2 : 1.3,
+          childAspectRatio: aspectRatio,
           children: items.map((s) => _gridItem(s)).toList(),
         );
       },
@@ -1472,33 +1629,53 @@ class _StatsGridCardState extends State<_StatsGridCard> {
   }
 
   Widget _gridItem(_GridStat stat) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.divider),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 2))],
-      ),
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: stat.color.withValues(alpha: 0.1), shape: BoxShape.circle),
-            child: Icon(stat.icon, size: 16, color: stat.color),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxHeight < 105 || constraints.maxWidth < 130;
+        final isVeryCompact = constraints.maxHeight < 85;
+        return Container(
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.divider),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 2))],
           ),
-          const SizedBox(height: 8),
-          _AnimatedCounter(
-            value: stat.rawValue,
-            isDouble: stat.isDouble,
-            suffix: stat.suffix,
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: stat.color),
+          padding: EdgeInsets.all(isVeryCompact ? 8 : (isCompact ? 10 : 14)),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: EdgeInsets.all(isVeryCompact ? 5 : (isCompact ? 6 : 8)),
+                decoration: BoxDecoration(color: stat.color.withValues(alpha: 0.1), shape: BoxShape.circle),
+                child: Icon(stat.icon, size: isVeryCompact ? 12 : (isCompact ? 14 : 16), color: stat.color),
+              ),
+              SizedBox(height: isVeryCompact ? 3 : (isCompact ? 4 : 8)),
+              _AnimatedCounter(
+                value: stat.rawValue,
+                isDouble: stat.isDouble,
+                suffix: stat.suffix,
+                style: TextStyle(
+                  fontSize: isVeryCompact ? 14 : (isCompact ? 16 : 20),
+                  fontWeight: FontWeight.w700,
+                  color: stat.color,
+                ),
+              ),
+              SizedBox(height: isVeryCompact ? 1 : (isCompact ? 2 : 4)),
+              Text(
+                stat.label,
+                style: TextStyle(
+                  fontSize: isVeryCompact ? 9 : (isCompact ? 10 : 11),
+                  color: const Color(0xFF64748B),
+                ),
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                maxLines: isCompact ? 1 : 2,
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(stat.label, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)), textAlign: TextAlign.center, overflow: TextOverflow.ellipsis, maxLines: 2),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1533,7 +1710,7 @@ class _StatsGridCardState extends State<_StatsGridCard> {
   }
 }
 
-// ── Data Models (unchanged — match backend contract) ────
+// ── Data Models (match backend contract) ────
 
 class SessionData {
   final int id;
@@ -1571,22 +1748,24 @@ class WordError {
       );
 }
 
+/// Matches PhonemeError.ERROR_TYPES on the backend (minus "skipped", which
+/// is a whole-word-never-spoken stat tracked elsewhere, not a phoneme-level
+/// error category). No "stress" field — the backend doesn't detect stress
+/// errors yet, so there's nothing real to bind it to.
 class ErrorBreakdown {
   final int substitution;
-  final int deletion;
-  final int stress;
+  final int omission;
   final int insertion;
 
-  ErrorBreakdown({required this.substitution, required this.deletion, required this.stress, required this.insertion});
+  ErrorBreakdown({required this.substitution, required this.omission, required this.insertion});
 
-  int get total => substitution + deletion + stress + insertion;
+  int get total => substitution + omission + insertion;
 
-  factory ErrorBreakdown.empty() => ErrorBreakdown(substitution: 0, deletion: 0, stress: 0, insertion: 0);
+  factory ErrorBreakdown.empty() => ErrorBreakdown(substitution: 0, omission: 0, insertion: 0);
 
   factory ErrorBreakdown.fromJson(Map<String, dynamic> json) => ErrorBreakdown(
         substitution: (json['substitution'] as num?)?.toInt() ?? 0,
-        deletion: (json['deletion'] as num?)?.toInt() ?? 0,
-        stress: (json['stress'] as num?)?.toInt() ?? 0,
+        omission: (json['omission'] as num?)?.toInt() ?? 0,
         insertion: (json['insertion'] as num?)?.toInt() ?? 0,
       );
 }

@@ -26,30 +26,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _autoSaveRecordings = false;
 
   // ── Level config (still used for the header badge/gradient) ──
-  static const _levelLabels = {
-    'beginner':           'Beginner',
-    'intermediate':       'Intermediate',
-    'upper_intermediate': 'Upper Intermediate',
-    'advanced':           'Advanced',
-    'fluent':             'Fluent',
+static const _levelLabels = {
+    'beginner':     'Beginner',
+    'intermediate': 'Intermediate',
+    'expert':       'Expert',
   };
 
-  static const _levelColors = {
-    'beginner':           Color(0xFF16A34A),
-    'intermediate':       Color(0xFF0284C7),
-    'upper_intermediate': Color(0xFF7C3AED),
-    'advanced':           Color(0xFFD97706),
-    'fluent':             Color(0xFFDC2626),
+static const _levelColors = {
+    'beginner':     Color(0xFF16A34A),
+    'intermediate': Color(0xFF0284C7),
+    'expert':       Color(0xFFDC2626),
   };
 
-  static const _levelIcons = {
-    'beginner':           Icons.looks_one_rounded,
-    'intermediate':       Icons.looks_two_rounded,
-    'upper_intermediate': Icons.looks_3_rounded,
-    'advanced':           Icons.looks_4_rounded,
-    'fluent':             Icons.looks_5_rounded,
-  };
-
+static const _levelIcons = {
+  'beginner':     Icons.looks_one_rounded,
+  'intermediate': Icons.looks_two_rounded,
+  'expert':       Icons.looks_3_rounded,
+};
   // ── Lifecycle ────────────────────────────────────────────
   @override
   void initState() {

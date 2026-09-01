@@ -19,12 +19,16 @@ class ActiveSessionScreen extends StatefulWidget {
   final String scriptText;
   final String sessionTitle;
   final String? scriptId;
+  final int? focusScriptId;
+  final List<String>? focusScriptWords;
 
   const ActiveSessionScreen({
     Key? key,
     required this.scriptText,
     this.scriptId,
     this.sessionTitle = 'Practice',
+    this.focusScriptId,
+    this.focusScriptWords,
   }) : super(key: key);
 
   @override
@@ -56,9 +60,13 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
   late String _sessionId;
   StreamSubscription? _wsSub;
 
+  // ── Live In-Session Delta ──────────────────────────
+  double? _historicalAvg;
+  int _liveCorrect = 0;
+  int _liveJudged = 0;
   static const _minRecordingSeconds = 3;
 
-  @override
+    @override
   void initState() {
     super.initState();
     _stopwatch = Stopwatch();
@@ -68,6 +76,62 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
         .where((w) => w.trim().isNotEmpty)
         .map((w) => DisplayWord(w.replaceAll(RegExp(r"[^\w']"), '').toLowerCase()))
         .toList();
+    _loadHistoricalAverage();
+    _checkLevelUpPrompt();
+  }
+
+  Future<void> _checkLevelUpPrompt() async {
+    final progression = await ApiService.getProgressionStatus();
+    if (!mounted) return;
+    if (progression['error'] != null) return;
+    if (progression['eligible_for_promotion'] != true) return;
+
+    final nextLevelLabel = {
+      'beginner': 'Intermediate',
+      'intermediate': 'Expert',
+    }[progression['current_level']?.toString()];
+    if (nextLevelLabel == null) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text("You're ready to level up!"),
+        content: Text(
+          "You've met all the criteria for $nextLevelLabel. Want to move up before this session?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Not Now'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final result = await ApiService.confirmPromotion();
+              if (!mounted) return;
+              if (result['promoted'] == true) {
+                _snack('You leveled up to ${result['new_level']}!');
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _olive,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Level Up'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _loadHistoricalAverage() async {
+    final profile = await ApiService.getProfile();
+    if (!mounted) return;
+    final avg = (profile['avg_accuracy'] as num?)?.toDouble();
+    if (avg != null && avg > 0) {
+      setState(() => _historicalAvg = avg);
+    }
   }
 
   Future<void> _startRecording() async {
@@ -84,6 +148,8 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       _recordingUrl = null;
       _correctCount = 0;
       _score = 0;
+      _liveCorrect = 0;
+      _liveJudged = 0;
       for (final w in _words) {
         w.status = WordStatus.pending;
         w.audioPath = null;
@@ -112,6 +178,10 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
           default:
             _words[result.wordIndex].status = WordStatus.error;
         }
+        // Recomputed from scratch each time (not incremented) so a word
+        // whose status changes mid-stream is never double-counted.
+        _liveJudged = _words.where((w) => w.status != WordStatus.pending).length;
+        _liveCorrect = _words.where((w) => w.status == WordStatus.correct).length;
       });
     });
 
@@ -177,6 +247,37 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
         w.tip = r['explanation']?.toString();
         w.score = (r['per_word_score'] as num?)?.toDouble();
         w.audioPath = r['audio_path']?.toString();
+      }
+
+            // If this session came from a Focus Script, report back the
+      // post-remediation error rate on just its target words.
+      if (widget.focusScriptId != null &&
+          widget.focusScriptWords != null &&
+          widget.focusScriptWords!.isNotEmpty) {
+        final targetSet =
+            widget.focusScriptWords!.map((w) => w.toLowerCase()).toSet();
+        final targetHits =
+            _words.where((w) => targetSet.contains(w.text)).toList();
+
+        if (targetHits.isNotEmpty) {
+          final targetErrors = targetHits
+              .where((w) =>
+                  w.status == WordStatus.error ||
+                  w.status == WordStatus.skipped)
+              .length;
+          final postErrorRate = (targetErrors / targetHits.length) * 100;
+
+          // Fire-and-forget-ish: awaited so it's recorded before the user
+          // navigates away, but failures here shouldn't block the summary.
+          try {
+            await ApiService.completeFocusScript(
+              widget.focusScriptId!,
+              postErrorRate: postErrorRate,
+            );
+          } catch (_) {
+            // Non-fatal — session results still display normally.
+          }
+        }
       }
 
       String? fbText;
@@ -316,6 +417,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
             accentColor: _olive,
             cardColor: _cardBg,
           ),
+        _buildLiveDeltaBadge(),
         Expanded(
           child: Container(
             margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -513,7 +615,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       ]),
     );
   }
-
   Widget _btn({
     required String label,
     required IconData icon,
@@ -532,6 +633,45 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
         elevation: 0,
         padding: const EdgeInsets.symmetric(vertical: 14),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
+  Widget _buildLiveDeltaBadge() {
+    if (_state != _SessionState.recording || _historicalAvg == null || _liveJudged < 3) {
+      return const SizedBox.shrink();
+    }
+    final liveAccuracy = (_liveCorrect / _liveJudged) * 100;
+    final delta = liveAccuracy - _historicalAvg!;
+    final isAbove = delta >= 0;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: isAbove ? const Color(0xFFDCFCE7) : const Color(0xFFFFF3CD),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isAbove ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+            size: 16,
+            color: isAbove ? const Color(0xFF16A34A) : const Color(0xFF856404),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            isAbove
+                ? '${delta.toStringAsFixed(0)}% above your average'
+                : '${delta.abs().toStringAsFixed(0)}% below your average',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: isAbove ? const Color(0xFF16A34A) : const Color(0xFF856404),
+            ),
+          ),
+        ],
       ),
     );
   }

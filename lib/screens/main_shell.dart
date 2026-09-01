@@ -3,8 +3,10 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common_widgets.dart';
+import '../services/api_service.dart';
 import 'home_screen.dart';
 import 'script_selection_screen.dart';
+import 'active_session_screen.dart';
 
 class MainShell extends StatefulWidget {
   final int initialIndex;
@@ -86,6 +88,13 @@ class _PracticeTabState extends State<_PracticeTab>
   late final List<Animation<double>> _fadeAnimations;
   late final List<Animation<Offset>> _slideAnimations;
 
+  // Animation index map (8 staggered slots):
+  // 0 hero · 1 generate-with-AI card · 2 "Practice Mode" header ·
+  // 3,4,5 mode cards · 6 proficiency section · 7 info card + begin button
+  static const int _animationSlotCount = 8;
+
+  static const _primary = AppColors.primary;
+
   static const List<Map<String, dynamic>> _modes = [
     {
       'name': 'Public Speaking',
@@ -108,9 +117,7 @@ class _PracticeTabState extends State<_PracticeTab>
   ];
 
   static const List<String> _proficiencyLevels = [
-    'Fluent',
-    'Advanced',
-    'Upper Intermediate',
+    'Expert',
     'Intermediate',
     'Beginner',
   ];
@@ -126,7 +133,7 @@ class _PracticeTabState extends State<_PracticeTab>
       duration: const Duration(milliseconds: 1200),
     );
 
-    _fadeAnimations = List.generate(7, (i) {
+    _fadeAnimations = List.generate(_animationSlotCount, (i) {
       final start = i * 0.1;
       final end = start + 0.4;
       return Tween<double>(begin: 0, end: 1).animate(
@@ -138,7 +145,7 @@ class _PracticeTabState extends State<_PracticeTab>
       );
     });
 
-    _slideAnimations = List.generate(7, (i) {
+    _slideAnimations = List.generate(_animationSlotCount, (i) {
       final start = i * 0.1;
       final end = start + 0.5;
       return Tween<Offset>(
@@ -224,6 +231,221 @@ class _PracticeTabState extends State<_PracticeTab>
   bool get _canStart =>
       _selectedMode != null && (_isScriptBased || _selectedProficiency != null);
 
+  // ── Generate with AI (standalone — own topic/mode/level/word-limit) ──
+  void _showGenerateAiDialog() {
+    final topicCtrl = TextEditingController();
+    final wordLimitCtrl = TextEditingController(text: '60');
+    ScriptMode dialogMode = ScriptMode.dailyConversation;
+    ProficiencyLevel dialogLevel = ProficiencyLevel.intermediate;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: Row(
+            children: const [
+              Icon(Icons.auto_awesome_rounded, color: _primary, size: 20),
+              SizedBox(width: 8),
+              Text('Generate with AI'),
+            ],
+          ),
+          contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _dialogLabel('Topic'),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: topicCtrl,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration:
+                        _inputDecoration('e.g. Ordering coffee at a cafe'),
+                  ),
+                  const SizedBox(height: 16),
+                  _dialogLabel('Practice Mode'),
+                  const SizedBox(height: 6),
+                  DropdownButtonFormField<ScriptMode>(
+                    value: dialogMode,
+                    decoration: _inputDecoration(''),
+                    isExpanded: true,
+                    items: ScriptMode.values
+                        .map((m) => DropdownMenuItem(
+                              value: m,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(m.icon, size: 16, color: _primary),
+                                  const SizedBox(width: 8),
+                                  Text(m.label),
+                                ],
+                              ),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setLocal(() => dialogMode = v);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  _dialogLabel('Difficulty Level'),
+                  const SizedBox(height: 6),
+                  DropdownButtonFormField<ProficiencyLevel>(
+                    value: dialogLevel,
+                    decoration: _inputDecoration(''),
+                    isExpanded: true,
+                    items: ProficiencyLevel.values
+                        .map((l) => DropdownMenuItem(
+                              value: l,
+                              child: Text(l.label),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setLocal(() => dialogLevel = v);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  _dialogLabel('Word Limit'),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: wordLimitCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: _inputDecoration('20 – 400 words'),
+                  ),
+                  const SizedBox(height: 4),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel',
+                  style: TextStyle(color: AppColors.textMuted)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: _primary),
+              onPressed: () {
+                final topic = topicCtrl.text.trim();
+                final wordLimit = int.tryParse(wordLimitCtrl.text.trim());
+
+                if (topic.isEmpty) {
+                  _showSnack('Please enter a topic', error: true);
+                  return;
+                }
+                if (wordLimit == null || wordLimit < 20 || wordLimit > 400) {
+                  _showSnack('Word limit must be between 20 and 400',
+                      error: true);
+                  return;
+                }
+
+                Navigator.pop(ctx);
+                _generateAiScript(
+                  topic: topic,
+                  wordLimit: wordLimit,
+                  mode: dialogMode.value,
+                  level: dialogLevel.value,
+                );
+              },
+              child: const Text('Generate',
+                  style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _generateAiScript({
+    required String topic,
+    required int wordLimit,
+    required String mode,
+    required String level,
+  }) async {
+    _showLoadingDialog('Writing your script...');
+
+    final result = await ApiService.generateAiScript(
+      topic: topic,
+      wordLimit: wordLimit,
+      mode: mode,
+      level: level,
+    );
+
+    if (!mounted) return;
+    Navigator.pop(context); // close loading dialog
+
+    if (result['id'] == null) {
+      _showSnack(result['error']?.toString() ?? 'Failed to generate script',
+          error: true);
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ActiveSessionScreen(
+          scriptText: result['content'].toString(),
+          scriptId: result['id']?.toString(),
+          sessionTitle: result['title'].toString(),
+        ),
+      ),
+    );
+  }
+
+  void _showLoadingDialog(String msg) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(children: [
+            const CircularProgressIndicator(color: _primary),
+            const SizedBox(width: 16),
+            Expanded(child: Text(msg)),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  void _showSnack(String msg, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Row(children: [
+        Icon(error ? Icons.error_outline : Icons.check_circle,
+            color: Colors.white, size: 18),
+        const SizedBox(width: 8),
+        Expanded(child: Text(msg)),
+      ]),
+      backgroundColor: error ? AppColors.error : AppColors.success,
+      duration: const Duration(seconds: 4),
+    ));
+  }
+
+  Widget _dialogLabel(String text) => Text(
+        text,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textSlate,
+        ),
+      );
+
+  InputDecoration _inputDecoration(String hint) => InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(fontSize: 13, color: AppColors.textFaint),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: _primary, width: 1.5),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -273,12 +495,40 @@ class _PracticeTabState extends State<_PracticeTab>
                 ],
               ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
 
-            // ── Practice Mode Section ─────────────────────────────
+            // ── Generate with AI (standalone entry point) ─────────
             _AnimatedItem(
               fade: _fadeAnimations[1],
               slide: _slideAnimations[1],
+              child: _GenerateAiCard(onTap: _showGenerateAiDialog),
+            ),
+            const SizedBox(height: 12),
+            _AnimatedItem(
+              fade: _fadeAnimations[1],
+              slide: _slideAnimations[1],
+              child: Row(
+                children: const [
+                  Expanded(child: Divider()),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    child: Text('OR CHOOSE MANUALLY',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.6,
+                            color: AppColors.textMuted)),
+                  ),
+                  Expanded(child: Divider()),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // ── Practice Mode Section ─────────────────────────────
+            _AnimatedItem(
+              fade: _fadeAnimations[2],
+              slide: _slideAnimations[2],
               child: _SectionHeader(title: 'Practice Mode'),
             ),
             const SizedBox(height: 14),
@@ -288,8 +538,8 @@ class _PracticeTabState extends State<_PracticeTab>
               final i = entry.key;
               final mode = entry.value;
               return _AnimatedItem(
-                fade: _fadeAnimations[2 + i],
-                slide: _slideAnimations[2 + i],
+                fade: _fadeAnimations[3 + i],
+                slide: _slideAnimations[3 + i],
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: _ModeCard(
@@ -309,8 +559,8 @@ class _PracticeTabState extends State<_PracticeTab>
               child: _isScriptBased
                   ? _AnimatedItem(
                       key: const ValueKey('script_note'),
-                      fade: _fadeAnimations[5],
-                      slide: _slideAnimations[5],
+                      fade: _fadeAnimations[6],
+                      slide: _slideAnimations[6],
                       child: _ScriptBasedNoticeCard(),
                     )
                   : Column(
@@ -318,14 +568,14 @@ class _PracticeTabState extends State<_PracticeTab>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _AnimatedItem(
-                          fade: _fadeAnimations[5],
-                          slide: _slideAnimations[5],
+                          fade: _fadeAnimations[6],
+                          slide: _slideAnimations[6],
                           child: _SectionHeader(title: 'Proficiency Level'),
                         ),
                         const SizedBox(height: 14),
                         _AnimatedItem(
-                          fade: _fadeAnimations[5],
-                          slide: _slideAnimations[5],
+                          fade: _fadeAnimations[6],
+                          slide: _slideAnimations[6],
                           child: _SelectorButton(
                             label: _selectedProficiency ?? 'Select your level',
                             subtitle: _selectedProficiency != null
@@ -349,8 +599,8 @@ class _PracticeTabState extends State<_PracticeTab>
                   ? CrossFadeState.showSecond
                   : CrossFadeState.showFirst,
               firstChild: _AnimatedItem(
-                fade: _fadeAnimations[6],
-                slide: _slideAnimations[6],
+                fade: _fadeAnimations[7],
+                slide: _slideAnimations[7],
                 child: _InfoCard(),
               ),
               secondChild: const SizedBox.shrink(),
@@ -359,8 +609,8 @@ class _PracticeTabState extends State<_PracticeTab>
             const SizedBox(height: 24),
 
             _AnimatedItem(
-              fade: _fadeAnimations[6],
-              slide: _slideAnimations[6],
+              fade: _fadeAnimations[7],
+              slide: _slideAnimations[7],
               child: _BeginButton(
                 canStart: _canStart,
                 onPressed: _beginPractice,
@@ -368,6 +618,73 @@ class _PracticeTabState extends State<_PracticeTab>
             ),
 
             const SizedBox(height: 100),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Generate with AI Card ────────────────────────────────────────
+class _GenerateAiCard extends StatelessWidget {
+  final VoidCallback onTap;
+  const _GenerateAiCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [AppColors.primary, Color(0xFF8B5CF6)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary.withValues(alpha: 0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.auto_awesome_rounded,
+                  color: Colors.white, size: 26),
+            ),
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Generate with AI',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    'Give us a topic — we\'ll write a custom script instantly',
+                    style: TextStyle(fontSize: 12, color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: Colors.white70),
           ],
         ),
       ),

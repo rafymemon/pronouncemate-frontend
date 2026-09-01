@@ -29,10 +29,7 @@ enum ScriptMode {
 enum ProficiencyLevel {
   beginner('beginner', 'Beginner', AppColors.accentLight),
   intermediate('intermediate', 'Intermediate', AppColors.accent),
-  upperIntermediate(
-      'upper_intermediate', 'Upper Intermediate', AppColors.primaryLight),
-  advanced('advanced', 'Advanced', AppColors.primary),
-  fluent('fluent', 'Fluent', AppColors.primaryDark);
+  expert('expert', 'Expert', AppColors.primaryDark);
 
   final String value;
   final String label;
@@ -1134,12 +1131,8 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
         return 'Simple vocabulary, short sentences, basic grammar';
       case ProficiencyLevel.intermediate:
         return 'Everyday topics, moderate complexity, common expressions';
-      case ProficiencyLevel.upperIntermediate:
-        return 'Complex ideas, varied vocabulary, nuanced expressions';
-      case ProficiencyLevel.advanced:
-        return 'Abstract topics, idiomatic language, precise articulation';
-      case ProficiencyLevel.fluent:
-        return 'Near-native fluency, professional and academic contexts';
+      case ProficiencyLevel.expert:
+        return 'Abstract topics, idiomatic language, near-native fluency';
     }
   }
 

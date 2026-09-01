@@ -273,6 +273,43 @@ static Future<Map<String, dynamic>> clearSessionHistory() async {
     return jsonDecode(response.body);
   }
 
+  // ── Generate with AI ─────────────────────────────────────
+  // Generates a single custom script from a user-supplied topic + word
+  // limit via Gemini. The returned script is already saved server-side
+  // (is_builtin=False, owned by the current user), in the same shape as
+  // uploadScriptText/uploadScriptFile — safe to drop straight into
+  // _startScript() or append to the "My Scripts" list.
+  static Future<Map<String, dynamic>> generateAiScript({
+    required String topic,
+    required int wordLimit,
+    required String mode,
+    required String level,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/scripts/generate/'),
+        headers: await authHeaders,
+        body: jsonEncode({
+          'topic': topic,
+          'word_limit': wordLimit,
+          'mode': mode,
+          'level': level,
+        }),
+      ).timeout(const Duration(seconds: 30));
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (response.statusCode == 201) {
+        return data;
+      }
+      return {
+        'error': data['error']?.toString() ?? 'Server error ${response.statusCode}'
+      };
+    } catch (e) {
+      return {'error': e.toString()};
+    }
+  }
+
   // ── Dashboard ───────────────────────────────────────────
   static Future<Map<String, dynamic>> getDashboardSummary() async {
     try {
@@ -298,6 +335,139 @@ static Future<Map<String, dynamic>> clearSessionHistory() async {
         Uri.parse('$baseUrl/analytics/'),
         headers: await authHeaders,
       ).timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return {'error': 'Server error ${response.statusCode}'};
+    } catch (e) {
+      return {'error': e.toString()};
+    }
+  }
+
+
+
+
+  // ── Improvement Phase ───────────────────────────────────
+  static Future<Map<String, dynamic>> getProgressionStatus() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/progression/'),
+        headers: await authHeaders,
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return {'error': 'Server error ${response.statusCode}'};
+    } catch (e) {
+      return {'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> confirmPromotion() async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/progression/confirm/'),
+        headers: await authHeaders,
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200 || response.statusCode == 400) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return {'error': 'Server error ${response.statusCode}'};
+    } catch (e) {
+      return {'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getWordMastery({String? status}) async {
+    try {
+      final params = <String, String>{};
+      if (status != null) params['status'] = status;
+
+      final uri = Uri.parse('$baseUrl/mastery/').replace(queryParameters: params);
+
+      final response = await http.get(uri, headers: await authHeaders)
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {
+          'words': List<Map<String, dynamic>>.from(
+            (data as List).map((e) => Map<String, dynamic>.from(e)),
+          ),
+        };
+      }
+      return {'words': [], 'error': 'Server error ${response.statusCode}'};
+    } catch (e) {
+      return {'words': [], 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getLatestFocusScript() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/focus-scripts/latest/'),
+        headers: await authHeaders,
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return {'focus_script': null, 'error': 'Server error ${response.statusCode}'};
+    } catch (e) {
+      return {'focus_script': null, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> completeFocusScript(
+    int scriptId, {
+    required double postErrorRate,
+  }) async {
+    try {
+      final response = await http.patch(
+        Uri.parse('$baseUrl/focus-scripts/$scriptId/complete/'),
+        headers: await authHeaders,
+        body: jsonEncode({'post_error_rate': postErrorRate}),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return {'error': 'Server error ${response.statusCode}'};
+    } catch (e) {
+      return {'error': e.toString()};
+    }
+  }
+
+    static Future<Map<String, dynamic>> getFocusScriptHistory() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/focus-scripts/'),
+        headers: await authHeaders,
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return {
+          'scripts': List<Map<String, dynamic>>.from(
+            (data as List).map((e) => Map<String, dynamic>.from(e)),
+          ),
+        };
+      }
+      return {'scripts': [], 'error': 'Server error ${response.statusCode}'};
+    } catch (e) {
+      return {'scripts': [], 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getFocusScriptStats() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/focus-scripts/stats/'),
+        headers: await authHeaders,
+      ).timeout(const Duration(seconds: 10));
+
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }

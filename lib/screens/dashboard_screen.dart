@@ -3,6 +3,8 @@ import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import 'main_shell.dart';
 import 'progress_analytics_screen.dart';
+import 'active_session_screen.dart';
+import 'focus_script_history_screen.dart';
 
 // ═══════════════════════════════════════════════════════
 // TOP-LEVEL HELPERS (shared across widgets in this file)
@@ -48,7 +50,8 @@ class _ResponsiveCardHeader extends StatelessWidget {
   final Widget title;
   final Widget trailing;
   final double breakpoint;
-  const _ResponsiveCardHeader({required this.title, required this.trailing, this.breakpoint = 300});
+  const _ResponsiveCardHeader(
+      {required this.title, required this.trailing, this.breakpoint = 300});
 
   @override
   Widget build(BuildContext context) {
@@ -84,7 +87,8 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> with TickerProviderStateMixin {
+class _DashboardScreenState extends State<DashboardScreen>
+    with TickerProviderStateMixin {
   bool _loading = true;
   String? _error;
 
@@ -100,6 +104,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   List<Map<String, dynamic>> _focusWords = [];
   Map<String, double> _modeScores = {};
 
+  // ── Improvement Phase data ─────────────────────────
+  Map<String, dynamic>? _progression;
+  Map<String, dynamic>? _focusScript;
   // Animation controllers
   late AnimationController _headerAnim;
   late AnimationController _streakPulse;
@@ -107,8 +114,11 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   @override
   void initState() {
     super.initState();
-    _headerAnim = AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
-    _streakPulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))..repeat(reverse: true);
+    _headerAnim = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 800));
+    _streakPulse = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1500))
+      ..repeat(reverse: true);
     _loadData();
   }
 
@@ -142,9 +152,12 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       _streakDays = data['streak_days'] ?? 0;
       _totalSessions = data['total_sessions'] ?? 0;
       _bestScore = (data['best_score'] as num?)?.toDouble() ?? 0;
-      _recentSessions = List<Map<String, dynamic>>.from(data['recent_sessions'] ?? []);
+      _recentSessions =
+          List<Map<String, dynamic>>.from(data['recent_sessions'] ?? []);
       _quickStats = Map<String, dynamic>.from(data['quick_stats'] ?? {});
-      _sparkline = List<double>.from((data['sparkline'] as List?)?.map((e) => (e as num).toDouble()) ?? []);
+      _sparkline = List<double>.from(
+          (data['sparkline'] as List?)?.map((e) => (e as num).toDouble()) ??
+              []);
       _improvement = Map<String, dynamic>.from(data['improvement'] ?? {});
       _focusWords = List<Map<String, dynamic>>.from(data['focus_words'] ?? []);
       _modeScores = (data['mode_scores'] as Map<String, dynamic>?)?.map(
@@ -155,6 +168,39 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     });
 
     _headerAnim.forward();
+    _loadImprovementData();
+  }
+
+  // Fetched separately and non-blocking — a failure here shouldn't
+  // prevent the core dashboard (which already loaded above) from showing.
+  Future<void> _loadImprovementData() async {
+    final results = await Future.wait([
+      ApiService.getProgressionStatus(),
+      ApiService.getLatestFocusScript(),
+    ]);
+
+    if (!mounted) return;
+
+    final progressionData = results[0];
+    final focusScriptData = results[1];
+
+    setState(() {
+      _progression = progressionData['error'] == null ? progressionData : null;
+      _focusScript = focusScriptData['focus_script'] as Map<String, dynamic>?;
+    });
+  }
+
+  void _startFocusScript() {
+    if (_focusScript == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ActiveSessionScreen(
+          scriptText: _focusScript!['script_text'] as String,
+          sessionTitle: 'Focus Script',
+        ),
+      ),
+    ).then((_) => _loadData()); // refresh in case a new one was generated
   }
 
   String get _greeting {
@@ -175,7 +221,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: AppColors.accent));
+      return const Center(
+          child: CircularProgressIndicator(color: AppColors.accent));
     }
 
     if (_error != null) {
@@ -185,15 +232,23 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           children: [
             Icon(Icons.wifi_off, size: 56, color: Colors.grey.shade400),
             const SizedBox(height: 16),
-            Text('Could not load dashboard', style: TextStyle(fontSize: 18, color: Colors.grey.shade700, fontWeight: FontWeight.w600)),
+            Text('Could not load dashboard',
+                style: TextStyle(
+                    fontSize: 18,
+                    color: Colors.grey.shade700,
+                    fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            Text(_error!, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
+            Text(_error!,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: _loadData,
               icon: const Icon(Icons.refresh),
               label: const Text('Try Again'),
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white),
             ),
           ],
         ),
@@ -204,7 +259,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       onRefresh: _loadData,
       color: AppColors.accent,
       child: CustomScrollView(
-        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+        physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics()),
         slivers: [
           SliverToBoxAdapter(child: _buildHeader()),
           SliverPadding(
@@ -214,11 +270,23 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                 const SizedBox(height: 20),
                 _buildQuickStatsCarousel(),
                 const SizedBox(height: 24),
+                if (_progression != null) ...[
+                  _ProgressionPanel(progression: _progression!),
+                  const SizedBox(height: 24),
+                ],
+                if (_focusScript != null) ...[
+                  _FocusScriptCard(
+                    focusScript: _focusScript!,
+                    onStart: _startFocusScript,
+                  ),
+                  const SizedBox(height: 24),
+                ],
                 if (_sparkline.length >= 2) ...[
                   _buildWeeklyHeatmap(),
                   const SizedBox(height: 24),
                 ],
-                if ((_improvement['percentage_change'] as num?)?.toDouble() != 0) ...[
+                if ((_improvement['percentage_change'] as num?)?.toDouble() !=
+                    0) ...[
                   _buildImprovementBadge(),
                   const SizedBox(height: 24),
                 ],
@@ -255,13 +323,18 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         ),
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(32)),
         boxShadow: [
-          BoxShadow(color: const Color(0xFF2563EB).withValues(alpha: 0.35), blurRadius: 24, offset: const Offset(0, 10)),
+          BoxShadow(
+              color: const Color(0xFF2563EB).withValues(alpha: 0.35),
+              blurRadius: 24,
+              offset: const Offset(0, 10)),
         ],
       ),
       child: FadeTransition(
         opacity: _headerAnim.drive(Tween(begin: 0.0, end: 1.0)),
         child: SlideTransition(
-          position: Tween<Offset>(begin: const Offset(0, -0.1), end: Offset.zero).animate(
+          position:
+              Tween<Offset>(begin: const Offset(0, -0.1), end: Offset.zero)
+                  .animate(
             CurvedAnimation(parent: _headerAnim, curve: Curves.easeOutCubic),
           ),
           child: Column(
@@ -277,12 +350,19 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                       children: [
                         Text(
                           _greeting,
-                          style: TextStyle(fontSize: 14, color: Colors.white.withValues(alpha: 0.75), fontWeight: FontWeight.w500),
+                          style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.white.withValues(alpha: 0.75),
+                              fontWeight: FontWeight.w500),
                         ),
                         const SizedBox(height: 6),
                         Text(
                           _userName,
-                          style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: -0.5),
+                          style: const TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              letterSpacing: -0.5),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -294,28 +374,40 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                     animation: _streakPulse,
                     builder: (context, child) {
                       final val = _streakPulse.value.clamp(0.0, 1.0);
-                      final opacity = Tween(begin: 0.7, end: 1.0).transform(val).clamp(0.0, 1.0);
+                      final opacity = Tween(begin: 0.7, end: 1.0)
+                          .transform(val)
+                          .clamp(0.0, 1.0);
                       return Opacity(
                         opacity: opacity,
                         child: child,
                       );
                     },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                        boxShadow: [BoxShadow(color: Colors.orangeAccent.withValues(alpha: 0.3), blurRadius: 12)],
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.2)),
+                        boxShadow: [
+                          BoxShadow(
+                              color: Colors.orangeAccent.withValues(alpha: 0.3),
+                              blurRadius: 12)
+                        ],
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.local_fire_department_rounded, color: Colors.orangeAccent, size: 22),
+                          const Icon(Icons.local_fire_department_rounded,
+                              color: Colors.orangeAccent, size: 22),
                           const SizedBox(width: 6),
                           Text(
                             '$_streakDays',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16),
                           ),
                         ],
                       ),
@@ -328,8 +420,12 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                 spacing: 10,
                 runSpacing: 10,
                 children: [
-                  _headerChip(Icons.emoji_events_rounded, 'Best ${_bestScore.toStringAsFixed(0)}%', Colors.amber),
-                  _headerChip(Icons.star_rounded, 'Lvl ${_levelFromSessions(_totalSessions)}', const Color(0xFFA78BFA)),
+                  _headerChip(Icons.emoji_events_rounded,
+                      'Best ${_bestScore.toStringAsFixed(0)}%', Colors.amber),
+                  _headerChip(
+                      Icons.star_rounded,
+                      'Lvl ${_levelFromSessions(_totalSessions)}',
+                      const Color(0xFFA78BFA)),
                 ],
               ),
             ],
@@ -352,7 +448,11 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         children: [
           Icon(icon, color: color, size: 16),
           const SizedBox(width: 6),
-          Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12)),
+          Text(text,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12)),
         ],
       ),
     );
@@ -366,10 +466,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
   Widget _buildQuickStatsCarousel() {
     final stats = [
-      _StatItem('$_totalSessions', 'Sessions', Icons.play_circle_filled_rounded, AppColors.primary),
-      _StatItem('${_quickStats['words'] ?? 0}', 'Words', Icons.text_fields_rounded, const Color(0xFF16A34A)),
-      _StatItem('${_quickStats['errors_corrected'] ?? 0}', 'Fixed', Icons.check_circle_rounded, const Color(0xFF7C3AED)),
-      _StatItem(_formatMinutes(_quickStats['minutes'] ?? 0), 'Time', Icons.timer_rounded, const Color(0xFF2563EB)),
+      _StatItem('$_totalSessions', 'Sessions', Icons.play_circle_filled_rounded,
+          AppColors.primary),
+      _StatItem('${_quickStats['words'] ?? 0}', 'Words',
+          Icons.text_fields_rounded, const Color(0xFF16A34A)),
+      _StatItem('${_quickStats['errors_corrected'] ?? 0}', 'Fixed',
+          Icons.check_circle_rounded, const Color(0xFF7C3AED)),
+      _StatItem(_formatMinutes(_quickStats['minutes'] ?? 0), 'Time',
+          Icons.timer_rounded, const Color(0xFF2563EB)),
     ];
 
     return SizedBox(
@@ -400,13 +504,21 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [s.color.withValues(alpha: 0.08), s.color.withValues(alpha: 0.02)],
+                  colors: [
+                    s.color.withValues(alpha: 0.08),
+                    s.color.withValues(alpha: 0.02)
+                  ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: s.color.withValues(alpha: 0.15)),
-                boxShadow: [BoxShadow(color: s.color.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))],
+                boxShadow: [
+                  BoxShadow(
+                      color: s.color.withValues(alpha: 0.06),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4))
+                ],
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -414,20 +526,28 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                 children: [
                   Container(
                     padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: s.color.withValues(alpha: 0.12), shape: BoxShape.circle),
+                    decoration: BoxDecoration(
+                        color: s.color.withValues(alpha: 0.12),
+                        shape: BoxShape.circle),
                     child: Icon(s.icon, color: s.color, size: 20),
                   ),
                   const SizedBox(height: 10),
                   Text(
                     s.value,
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: s.color),
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: s.color),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     s.label,
-                    style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                    style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w500),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -446,7 +566,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
   Widget _buildWeeklyHeatmap() {
     final days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-    final values = _sparkline.length >= 7 ? _sparkline.sublist(_sparkline.length - 7) : _sparkline;
+    final values = _sparkline.length >= 7
+        ? _sparkline.sublist(_sparkline.length - 7)
+        : _sparkline;
     final displayValues = values.isEmpty ? List.filled(7, 0.0) : values;
 
     return _glassCard(
@@ -454,21 +576,33 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _ResponsiveCardHeader(
-            title: const Text('Weekly Activity', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            title: const Text('Weekly Activity',
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary)),
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(20)),
-              child: Text('${_sparkline.length} sessions', style: const TextStyle(fontSize: 11, color: Color(0xFF16A34A), fontWeight: FontWeight.w600)),
+              decoration: BoxDecoration(
+                  color: const Color(0xFFDCFCE7),
+                  borderRadius: BorderRadius.circular(20)),
+              child: Text('${_sparkline.length} sessions',
+                  style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF16A34A),
+                      fontWeight: FontWeight.w600)),
             ),
           ),
           const SizedBox(height: 16),
           LayoutBuilder(
             builder: (context, constraints) {
-              final cellSize = ((constraints.maxWidth - 6 * 8) / 7).clamp(24.0, 36.0);
+              final cellSize =
+                  ((constraints.maxWidth - 6 * 8) / 7).clamp(24.0, 36.0);
               return Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: List.generate(7, (idx) {
-                  final val = idx < displayValues.length ? displayValues[idx] : 0.0;
+                  final val =
+                      idx < displayValues.length ? displayValues[idx] : 0.0;
                   final intensity = (val / 100).clamp(0.05, 1.0);
                   return TweenAnimationBuilder<double>(
                     tween: Tween(begin: 0.0, end: 1.0),
@@ -485,10 +619,16 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                               width: cellSize,
                               height: cellSize,
                               decoration: BoxDecoration(
-                                color: Color.lerp(const Color(0xFFF1F5F9), AppColors.accent, intensity * safeT),
+                                color: Color.lerp(const Color(0xFFF1F5F9),
+                                    AppColors.accent, intensity * safeT),
                                 borderRadius: BorderRadius.circular(10),
                                 boxShadow: intensity > 0.6
-                                    ? [BoxShadow(color: AppColors.accent.withValues(alpha: 0.25), blurRadius: 8)]
+                                    ? [
+                                        BoxShadow(
+                                            color: AppColors.accent
+                                                .withValues(alpha: 0.25),
+                                            blurRadius: 8)
+                                      ]
                                     : null,
                               ),
                               child: Center(
@@ -497,13 +637,19 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w700,
-                                    color: intensity > 0.4 ? Colors.white : const Color(0xFF64748B),
+                                    color: intensity > 0.4
+                                        ? Colors.white
+                                        : const Color(0xFF64748B),
                                   ),
                                 ),
                               ),
                             ),
                             const SizedBox(height: 8),
-                            Text(days[idx], style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500)),
+                            Text(days[idx],
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF94A3B8),
+                                    fontWeight: FontWeight.w500)),
                           ],
                         ),
                       );
@@ -553,7 +699,10 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: (isPositive ? const Color(0xFF10B981) : const Color(0xFFEF4444)).withValues(alpha: 0.25),
+              color: (isPositive
+                      ? const Color(0xFF10B981)
+                      : const Color(0xFFEF4444))
+                  .withValues(alpha: 0.25),
               blurRadius: 16,
               offset: const Offset(0, 6),
             ),
@@ -564,8 +713,15 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           children: [
             Container(
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(14)),
-              child: Icon(isPositive ? Icons.trending_up_rounded : Icons.trending_down_rounded, color: Colors.white, size: 24),
+              decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(14)),
+              child: Icon(
+                  isPositive
+                      ? Icons.trending_up_rounded
+                      : Icons.trending_down_rounded,
+                  color: Colors.white,
+                  size: 24),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -574,14 +730,21 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                 children: [
                   Text(
                     '${isPositive ? '+' : ''}${pct.toStringAsFixed(0)}% vs Last Week',
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    isPositive ? 'Your trajectory is climbing. Keep the rhythm!' : 'Consistency beats intensity. Show up today!',
-                    style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.85)),
+                    isPositive
+                        ? 'Your trajectory is climbing. Keep the rhythm!'
+                        : 'Consistency beats intensity. Show up today!',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white.withValues(alpha: 0.85)),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -622,13 +785,21 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [AppColors.primary.withValues(alpha: 0.08), AppColors.primary.withValues(alpha: 0.02)],
+              colors: [
+                AppColors.primary.withValues(alpha: 0.08),
+                AppColors.primary.withValues(alpha: 0.02)
+              ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
-            boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))],
+            boxShadow: [
+              BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.06),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4))
+            ],
           ),
           child: Row(
             children: [
@@ -638,7 +809,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                   color: AppColors.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(Icons.analytics_rounded, color: AppColors.primary, size: 24),
+                child: const Icon(Icons.analytics_rounded,
+                    color: AppColors.primary, size: 24),
               ),
               const SizedBox(width: 16),
               const Expanded(
@@ -646,9 +818,15 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('Detailed Analytics', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                    Text('Detailed Analytics',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary)),
                     SizedBox(height: 4),
-                    Text('Full breakdowns, charts, and deep insights', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                    Text('Full breakdowns, charts, and deep insights',
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary)),
                   ],
                 ),
               ),
@@ -658,7 +836,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                   color: AppColors.primary.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.arrow_forward_ios_rounded, color: AppColors.primary, size: 14),
+                child: const Icon(Icons.arrow_forward_ios_rounded,
+                    color: AppColors.primary, size: 14),
               ),
             ],
           ),
@@ -689,7 +868,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         elevation: 8,
         highlightElevation: 12,
         icon: const Icon(Icons.mic_rounded, color: Colors.white),
-        label: const Text('Practice', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+        label: const Text('Practice',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
       ),
     );
   }
@@ -704,7 +884,12 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppColors.divider),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 12, offset: const Offset(0, 4))],
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 12,
+              offset: const Offset(0, 4))
+        ],
       ),
       padding: const EdgeInsets.all(18),
       child: child,
@@ -731,9 +916,12 @@ class _ModePerformanceCard extends StatefulWidget {
 
 class _ModePerformanceCardState extends State<_ModePerformanceCard> {
   static final List<_ModeDisplay> _modes = [
-    _ModeDisplay('Public Speaking', 'public_speaking', Icons.campaign_rounded, AppColors.primary),
-    _ModeDisplay('Daily Conversation', 'daily_conversation', Icons.chat_bubble_rounded, AppColors.accent),
-    _ModeDisplay('Script-Based', 'script_based', Icons.description_rounded, AppColors.success),
+    _ModeDisplay('Public Speaking', 'public_speaking', Icons.campaign_rounded,
+        AppColors.primary),
+    _ModeDisplay('Daily Conversation', 'daily_conversation',
+        Icons.chat_bubble_rounded, AppColors.accent),
+    _ModeDisplay('Script-Based', 'script_based', Icons.description_rounded,
+        AppColors.success),
   ];
 
   String _selectedKey = _modes.first.key;
@@ -757,14 +945,23 @@ class _ModePerformanceCardState extends State<_ModePerformanceCard> {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppColors.divider),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 12, offset: const Offset(0, 4))],
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 12,
+              offset: const Offset(0, 4))
+        ],
       ),
       padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _ResponsiveCardHeader(
-            title: const Text('Mode Performance', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            title: const Text('Mode Performance',
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary)),
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
@@ -776,8 +973,12 @@ class _ModePerformanceCardState extends State<_ModePerformanceCard> {
                 child: DropdownButton<String>(
                   value: _selectedKey,
                   isDense: true,
-                  icon: Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: meta.color),
-                  style: TextStyle(fontSize: 13, color: meta.color, fontWeight: FontWeight.w700),
+                  icon: Icon(Icons.keyboard_arrow_down_rounded,
+                      size: 18, color: meta.color),
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: meta.color,
+                      fontWeight: FontWeight.w700),
                   dropdownColor: Colors.white,
                   borderRadius: BorderRadius.circular(12),
                   items: _modes
@@ -806,7 +1007,9 @@ class _ModePerformanceCardState extends State<_ModePerformanceCard> {
             transitionBuilder: (child, animation) => FadeTransition(
               opacity: animation,
               child: SlideTransition(
-                position: Tween<Offset>(begin: const Offset(0.05, 0), end: Offset.zero).animate(animation),
+                position: Tween<Offset>(
+                        begin: const Offset(0.05, 0), end: Offset.zero)
+                    .animate(animation),
                 child: child,
               ),
             ),
@@ -819,16 +1022,30 @@ class _ModePerformanceCardState extends State<_ModePerformanceCard> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(color: meta.color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                      child: Text(meta.label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: meta.color)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                          color: meta.color.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8)),
+                      child: Text(meta.label,
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: meta.color)),
                     ),
                     const SizedBox(height: 10),
-                    Text(_rankLabel(score), style: TextStyle(fontSize: 13, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
+                    Text(_rankLabel(score),
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade500,
+                            fontWeight: FontWeight.w500)),
                     const SizedBox(height: 6),
                     Text(
-                      score >= 70 ? 'You are performing well in this mode.' : 'Focus on this area to boost your overall score.',
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+                      score >= 70
+                          ? 'You are performing well in this mode.'
+                          : 'Focus on this area to boost your overall score.',
+                      style:
+                          TextStyle(fontSize: 11, color: Colors.grey.shade400),
                     ),
                   ],
                 );
@@ -902,8 +1119,13 @@ class _DashboardGauge extends StatelessWidget {
               Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('${(t * 100).toStringAsFixed(0)}%', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-                  const Text('Score', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                  Text('${(t * 100).toStringAsFixed(0)}%',
+                      style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textPrimary)),
+                  const Text('Score',
+                      style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
                 ],
               ),
             ],
@@ -920,7 +1142,8 @@ class _DashboardGauge extends StatelessWidget {
 
 class _FocusWordsSection extends StatefulWidget {
   final List<Map<String, dynamic>> words;
-  const _FocusWordsSection({required this.words});
+  final Map<String, Map<String, dynamic>> masteryByWord;
+  const _FocusWordsSection({required this.words, this.masteryByWord = const {}});
 
   @override
   State<_FocusWordsSection> createState() => _FocusWordsSectionState();
@@ -933,14 +1156,18 @@ class _FocusWordsSectionState extends State<_FocusWordsSection> {
     final list = List<Map<String, dynamic>>.from(widget.words);
     switch (_sort) {
       case 'A-Z':
-        list.sort((a, b) => (a['word'] ?? '').toString().toLowerCase().compareTo((b['word'] ?? '').toString().toLowerCase()));
+        list.sort((a, b) => (a['word'] ?? '')
+            .toString()
+            .toLowerCase()
+            .compareTo((b['word'] ?? '').toString().toLowerCase()));
         break;
       case 'Recent':
         // API returns focus words newest-first by default; leave order untouched.
         break;
       case 'Frequency':
       default:
-        list.sort((a, b) => ((b['error_count'] as num?)?.toInt() ?? 0).compareTo((a['error_count'] as num?)?.toInt() ?? 0));
+        list.sort((a, b) => ((b['error_count'] as num?)?.toInt() ?? 0)
+            .compareTo((a['error_count'] as num?)?.toInt() ?? 0));
     }
     return list;
   }
@@ -953,7 +1180,11 @@ class _FocusWordsSectionState extends State<_FocusWordsSection> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _ResponsiveCardHeader(
-          title: const Text('Focus Words', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+          title: const Text('Focus Words',
+              style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary)),
           trailing: _FocusSortDropdown(
             onSortChanged: (sortType) => setState(() => _sort = sortType),
           ),
@@ -962,7 +1193,9 @@ class _FocusWordsSectionState extends State<_FocusWordsSection> {
         const SizedBox(height: 14),
         LayoutBuilder(
           builder: (context, constraints) {
-            final cardWidth = constraints.maxWidth < 200 ? constraints.maxWidth * 0.85 : 160.0;
+            final cardWidth = constraints.maxWidth < 200
+                ? constraints.maxWidth * 0.85
+                : 160.0;
             return SizedBox(
               height: 140,
               child: ListView.separated(
@@ -998,7 +1231,13 @@ class _FocusWordsSectionState extends State<_FocusWordsSection> {
                         ),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: const Color(0xFFFECACA)),
-                        boxShadow: [BoxShadow(color: const Color(0xFFEF4444).withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))],
+                        boxShadow: [
+                          BoxShadow(
+                              color: const Color(0xFFEF4444)
+                                  .withValues(alpha: 0.06),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4))
+                        ],
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1009,27 +1248,70 @@ class _FocusWordsSectionState extends State<_FocusWordsSection> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(color: const Color(0xFFEF4444), borderRadius: BorderRadius.circular(8)),
-                                child: Text('#${idx + 1}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                    color: const Color(0xFFEF4444),
+                                    borderRadius: BorderRadius.circular(8)),
+                                child: Text('#${idx + 1}',
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700)),
                               ),
-                              Icon(Icons.volume_up_rounded, color: const Color(0xFFEF4444).withValues(alpha: 0.4), size: 18),
+                              Icon(Icons.volume_up_rounded,
+                                  color: const Color(0xFFEF4444)
+                                      .withValues(alpha: 0.4),
+                                  size: 18),
                             ],
                           ),
                           const SizedBox(height: 6),
                           Text(
                             '"${word['word']}"',
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                            style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary),
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
                           ),
                           const SizedBox(height: 2),
                           Text(
                             '${word['error_count']} errors',
-                            style: const TextStyle(fontSize: 12, color: Color(0xFFEF4444), fontWeight: FontWeight.w600),
+                            style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFFEF4444),
+                                fontWeight: FontWeight.w600),
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
                           ),
+                          Builder(builder: (context) {
+                            final mastery = widget.masteryByWord[
+                                (word['word'] ?? '').toString().toLowerCase()];
+                            if (mastery == null) return const SizedBox.shrink();
+                            final streak =
+                                (mastery['consecutive_correct'] as num?)
+                                        ?.toInt() ??
+                                    0;
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.trending_up_rounded,
+                                      size: 12, color: const Color(0xFF16A34A)),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    '$streak/3 to mastery',
+                                    style: const TextStyle(
+                                        fontSize: 10,
+                                        color: Color(0xFF16A34A),
+                                        fontWeight: FontWeight.w600),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
                         ],
                       ),
                     ),
@@ -1059,12 +1341,19 @@ class _FocusSortDropdownState extends State<_FocusSortDropdown> {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: const Color(0xFFFEF2F2), borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFFECACA))),
+      decoration: BoxDecoration(
+          color: const Color(0xFFFEF2F2),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFFECACA))),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: _sort,
-          icon: const Icon(Icons.sort_rounded, size: 14, color: Color(0xFFEF4444)),
-          style: const TextStyle(fontSize: 11, color: Color(0xFFEF4444), fontWeight: FontWeight.w600),
+          icon: const Icon(Icons.sort_rounded,
+              size: 14, color: Color(0xFFEF4444)),
+          style: const TextStyle(
+              fontSize: 11,
+              color: Color(0xFFEF4444),
+              fontWeight: FontWeight.w600),
           isDense: true,
           items: const [
             DropdownMenuItem(value: 'Frequency', child: Text('By Frequency')),
@@ -1111,7 +1400,11 @@ class _RecentSessionsSectionState extends State<_RecentSessionsSection> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _ResponsiveCardHeader(
-          title: const Text('Recent Sessions', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+          title: const Text('Recent Sessions',
+              style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary)),
           trailing: _SessionFilterDropdown(
             onFilterChanged: (filter) => setState(() => _filter = filter),
           ),
@@ -1122,12 +1415,18 @@ class _RecentSessionsSectionState extends State<_RecentSessionsSection> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.divider)),
+            decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppColors.divider)),
             child: Center(
               child: Text(
-                widget.sessions.isEmpty ? 'No sessions yet. Start your first practice!' : 'No sessions for this filter yet.',
+                widget.sessions.isEmpty
+                    ? 'No sessions yet. Start your first practice!'
+                    : 'No sessions for this filter yet.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 14),
               ),
             ),
           )
@@ -1159,7 +1458,12 @@ class _RecentSessionsSectionState extends State<_RecentSessionsSection> {
                   color: AppColors.surface,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: AppColors.divider),
-                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 2))],
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2))
+                  ],
                 ),
                 // FIX: wrapped in IntrinsicHeight so the stretched Row below
                 // (colored side-bar + content) gets a bounded height instead
@@ -1173,13 +1477,17 @@ class _RecentSessionsSectionState extends State<_RecentSessionsSection> {
                       Container(width: 5, color: color),
                       Expanded(
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 12),
                           child: Row(
                             children: [
                               Container(
                                 padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
-                                child: Icon(_modeIconFor(session['mode']), color: color, size: 18),
+                                decoration: BoxDecoration(
+                                    color: color.withValues(alpha: 0.1),
+                                    shape: BoxShape.circle),
+                                child: Icon(_modeIconFor(session['mode']),
+                                    color: color, size: 18),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
@@ -1189,14 +1497,19 @@ class _RecentSessionsSectionState extends State<_RecentSessionsSection> {
                                   children: [
                                     Text(
                                       session['title'] ?? 'Practice Session',
-                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: AppColors.textPrimary),
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 14,
+                                          color: AppColors.textPrimary),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
                                       session['date_label'] ?? '',
-                                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                      style: const TextStyle(
+                                          fontSize: 11,
+                                          color: AppColors.textSecondary),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -1205,14 +1518,19 @@ class _RecentSessionsSectionState extends State<_RecentSessionsSection> {
                               ),
                               const SizedBox(width: 8),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 6),
                                 decoration: BoxDecoration(
-                                  color: _scoreColorFor(session['score']).withValues(alpha: 0.1),
+                                  color: _scoreColorFor(session['score'])
+                                      .withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Text(
                                   '${(session['score'] as num?)?.toStringAsFixed(0) ?? 0}%',
-                                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: _scoreColorFor(session['score'])),
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 13,
+                                      color: _scoreColorFor(session['score'])),
                                 ),
                               ),
                             ],
@@ -1245,17 +1563,24 @@ class _SessionFilterDropdownState extends State<_SessionFilterDropdown> {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(
+          color: const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(20)),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: _filter,
-          icon: const Icon(Icons.filter_alt_rounded, size: 14, color: Color(0xFF64748B)),
-          style: const TextStyle(fontSize: 11, color: AppColors.textPrimary, fontWeight: FontWeight.w600),
+          icon: const Icon(Icons.filter_alt_rounded,
+              size: 14, color: Color(0xFF64748B)),
+          style: const TextStyle(
+              fontSize: 11,
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w600),
           isDense: true,
           items: const [
             DropdownMenuItem(value: 'All', child: Text('All')),
             DropdownMenuItem(value: 'public_speaking', child: Text('Public')),
-            DropdownMenuItem(value: 'daily_conversation', child: Text('Conversation')),
+            DropdownMenuItem(
+                value: 'daily_conversation', child: Text('Conversation')),
             DropdownMenuItem(value: 'script_based', child: Text('Script')),
           ],
           onChanged: (v) {
@@ -1288,4 +1613,279 @@ class _ModeDisplay {
   final IconData icon;
   final Color color;
   _ModeDisplay(this.label, this.key, this.icon, this.color);
+}
+
+// ═══════════════════════════════════════════════════════
+// PROGRESSION PANEL — "X / 5 criteria met" transparency card
+// ═══════════════════════════════════════════════════════
+
+class _ProgressionPanel extends StatelessWidget {
+  final Map<String, dynamic> progression;
+  const _ProgressionPanel({required this.progression});
+
+  static const _gateLabels = {
+    'sessions': 'Sessions at level',
+    'score': 'Average score',
+    'error_rate': 'Error rate',
+    'mastery': 'Word mastery',
+    'phoneme': 'Accent accuracy',
+  };
+
+  static const _levelLabels = {
+    'beginner': 'Beginner',
+    'intermediate': 'Intermediate',
+    'expert': 'Expert',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final level = progression['current_level']?.toString() ?? 'beginner';
+    final eligible = progression['eligible_for_promotion'] == true;
+    final gates = (progression['gates'] as Map<String, dynamic>?) ?? {};
+
+    final passedCount =
+        gates.values.where((g) => g is Map && g['passed'] == true).length;
+    final totalGates = gates.length;
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: eligible ? const Color(0xFF16A34A) : AppColors.divider,
+          width: eligible ? 1.5 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 12,
+              offset: const Offset(0, 4))
+        ],
+      ),
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  _levelLabels[level] ?? level,
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary),
+                ),
+              ),
+              const Spacer(),
+              if (eligible)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDCFCE7),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.trending_up_rounded,
+                          size: 13, color: Color(0xFF16A34A)),
+                      SizedBox(width: 4),
+                      Text('Ready to level up!',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF16A34A),
+                              fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                )
+              else
+                Text(
+                  '$passedCount / $totalGates criteria met',
+                  style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w600),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ...gates.entries.map((entry) {
+            final key = entry.key;
+            final g = entry.value as Map<String, dynamic>;
+            final passed = g['passed'] == true;
+            final current = g['current'];
+            final required = g['required'];
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                children: [
+                  Icon(
+                    passed
+                        ? Icons.check_circle_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                    size: 18,
+                    color:
+                        passed ? const Color(0xFF16A34A) : AppColors.textHint,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _gateLabels[key] ?? key,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: passed
+                            ? AppColors.textPrimary
+                            : AppColors.textSecondary,
+                        fontWeight: passed ? FontWeight.w600 : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '$current / $required',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color:
+                          passed ? const Color(0xFF16A34A) : AppColors.textHint,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// FOCUS SCRIPT CARD — Suggested remediation practice
+// ═══════════════════════════════════════════════════════
+
+class _FocusScriptCard extends StatelessWidget {
+  final Map<String, dynamic> focusScript;
+  final VoidCallback onStart;
+  const _FocusScriptCard({required this.focusScript, required this.onStart});
+
+  @override
+  Widget build(BuildContext context) {
+    final words = List<String>.from(focusScript['source_words'] ?? []);
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF7C3AED), Color(0xFF8B5CF6)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+              color: const Color(0xFF8B5CF6).withValues(alpha: 0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 8))
+        ],
+      ),
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(14)),
+                child: const Icon(Icons.auto_awesome_rounded,
+                    color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Focus Script Ready',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
+                ),
+              ),
+              GestureDetector(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const FocusScriptHistoryScreen()),
+                ),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text('History', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'We noticed ${words.length} recurring errors — practice a script built around them.',
+            style: TextStyle(
+                fontSize: 13,
+                color: Colors.white.withValues(alpha: 0.9),
+                height: 1.4),
+          ),
+          if (words.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: words
+                  .take(6)
+                  .map((w) => Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text('"$w"',
+                            style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600)),
+                      ))
+                  .toList(),
+            ),
+          ],
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: onStart,
+              icon: const Icon(Icons.mic_rounded, size: 18),
+              label: const Text('Start Focus Practice',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF7C3AED),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

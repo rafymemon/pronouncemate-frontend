@@ -1,3 +1,5 @@
+// lib/screens/home_screen.dart
+
 import 'package:flutter/material.dart';
 import '../services/user_session.dart';
 import '../services/user_progress_service.dart';
@@ -8,6 +10,7 @@ import 'active_session_screen.dart';
 import 'dashboard_screen.dart';
 import 'login_screen.dart';
 import 'profile_screen.dart';
+import 'progress_analytics_screen.dart';
 import 'script_selection_screen.dart' show ProficiencyLevel, ScriptMode;
 
 class HomeScreen extends StatefulWidget {
@@ -119,6 +122,13 @@ class HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _openDetailedAnalytics() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ProgressAnalyticsScreen()),
+    );
+  }
+
   Future<void> reload() async {
     await _loadSummary();
   }
@@ -182,7 +192,10 @@ class HomeScreenState extends State<HomeScreen> {
         return Scaffold(
           key: _scaffoldKey,
           backgroundColor: AppColors.background,
-          drawer: _AppDrawer(onLogout: _confirmLogout),
+          drawer: _AppDrawer(
+            onLogout: _confirmLogout,
+            onOpenAnalytics: _openDetailedAnalytics,
+          ),
           body: SafeArea(
             child: RefreshIndicator(
               onRefresh: _refresh,
@@ -352,9 +365,36 @@ class HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 28),
 
                     // ── Quick Stats ──────────────────────────────────
-                    const SectionHeader(
-                      title: 'Your Progress',
-                      subtitle: 'From your recent activity',
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: SectionHeader(
+                            title: 'Your Progress',
+                            subtitle: 'From your recent activity',
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _openDetailedAnalytics,
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('View Details',
+                                  style: TextStyle(
+                                      color: AppColors.primary,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                              SizedBox(width: 2),
+                              Icon(Icons.chevron_right_rounded,
+                                  color: AppColors.primary, size: 18),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 14),
                     GridView.count(
@@ -627,7 +667,8 @@ class _PickCard extends StatelessWidget {
 // ── App Drawer ───────────────────────────────────────────────────
 class _AppDrawer extends StatelessWidget {
   final VoidCallback onLogout;
-  const _AppDrawer({required this.onLogout});
+  final VoidCallback onOpenAnalytics;
+  const _AppDrawer({required this.onLogout, required this.onOpenAnalytics});
 
   @override
   Widget build(BuildContext context) {
@@ -691,6 +732,14 @@ class _AppDrawer extends StatelessWidget {
                 Navigator.of(context).pop();
                 Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const DashboardScreen()));
+              },
+            ),
+            _DrawerItem(
+              icon: Icons.insights_rounded,
+              label: 'Detailed Analytics',
+              onTap: () {
+                Navigator.of(context).pop();
+                onOpenAnalytics();
               },
             ),
             _DrawerItem(
