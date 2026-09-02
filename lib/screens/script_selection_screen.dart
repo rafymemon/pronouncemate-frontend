@@ -68,8 +68,7 @@ class ScriptSelectionScreen extends StatefulWidget {
   State<ScriptSelectionScreen> createState() => _ScriptSelectionState();
 }
 
-class _ScriptSelectionState extends State<ScriptSelectionScreen>
-    with SingleTickerProviderStateMixin {
+class _ScriptSelectionState extends State<ScriptSelectionScreen> {
   // ── Colors ────────────────────────────────────────────
   static const _primary = AppColors.primary;
   static const _bg = AppColors.screenBackground;
@@ -79,8 +78,6 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
   static const _border = AppColors.softBorder;
 
   // ── State ─────────────────────────────────────────────
-  late TabController _tabs;
-
   int _currentStep = 0;
   ScriptMode? _selectedMode;
   ProficiencyLevel? _selectedLevel;
@@ -106,7 +103,6 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 2, vsync: this);
 
     if (widget.preselectedMode != null) {
       try {
@@ -127,7 +123,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
       }
     } else if (_selectedMode == ScriptMode.scriptBased) {
       // Script-Based never needs a proficiency level — skip straight
-      // to the script list (Built-in + My Scripts tabs).
+      // to the script list (My Scripts only — no built-in library here).
       _currentStep = 2;
     }
 
@@ -140,7 +136,6 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
 
   @override
   void dispose() {
-    _tabs.dispose();
     _searchCtrl.dispose();
     _titleCtrl.dispose();
     _contentCtrl.dispose();
@@ -214,7 +209,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
     });
   }
 
-  Future<void> _refreshBuiltin() {
+  Future<void> _refreshScripts() {
     if (_isScriptBasedMode) {
       return _loadScripts(silent: true);
     }
@@ -269,17 +264,6 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
     }
   }
 
-  void _resetFilters() {
-    setState(() {
-      _currentStep = 0;
-      _selectedMode = null;
-      _selectedLevel = null;
-      _searchQuery = '';
-      _searchCtrl.clear();
-    });
-    _loadScripts();
-  }
-
   // ── Start Practice ──────────────────────────────────
   void _startScript(Map<String, dynamic> script) {
     Navigator.push(
@@ -324,7 +308,6 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
       _titleCtrl.clear();
       _contentCtrl.clear();
       await _loadScripts(silent: true);
-      _tabs.animateTo(1);
       _showSuccess('Script saved successfully');
     } else {
       _showError(result['error']?.toString() ?? 'Failed to save');
@@ -372,7 +355,6 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
 
     if (uploadResult['id'] != null) {
       await _loadScripts(silent: true);
-      _tabs.animateTo(1);
       _showSuccess('File uploaded — "${uploadResult['title']}" ready');
     } else {
       _showError(uploadResult['error']?.toString() ?? 'Upload failed');
@@ -580,19 +562,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
     ));
   }
 
-  // ── Filtered Lists ──────────────────────────────────
-  List<Map<String, dynamic>> get _filteredBuiltin {
-    var list = _builtinScripts;
-    if (_searchQuery.isNotEmpty) {
-      list = list
-          .where((s) =>
-              s['title'].toString().toLowerCase().contains(_searchQuery) ||
-              s['description'].toString().toLowerCase().contains(_searchQuery))
-          .toList();
-    }
-    return list;
-  }
-
+  // ── Filtered List (My Scripts search) ────────────────
   List<Map<String, dynamic>> get _filteredUploaded {
     if (_searchQuery.isEmpty) return _uploadedScripts;
     return _uploadedScripts
@@ -652,17 +622,13 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
         ];
         break;
        case 2:
-        title = _selectedMode != null
-            ? (_selectedLevel != null
-                ? '${_selectedMode!.label} • ${_selectedLevel!.label}'
-                : _selectedMode!.label)
-            : 'All Scripts';
-        actions = [
-          TextButton(
-            onPressed: _resetFilters,
-            child: const Text('Reset', style: TextStyle(color: Colors.white70)),
-          ),
-        ];
+        title = _isScriptBasedMode
+            ? 'My Scripts'
+            : (_selectedMode != null
+                ? (_selectedLevel != null
+                    ? '${_selectedMode!.label} • ${_selectedLevel!.label}'
+                    : _selectedMode!.label)
+                : 'All Scripts');
         break;
       default:
         title = 'Scripts';
@@ -682,58 +648,42 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
             )
           : null,
       actions: actions,
+      // Script-Based mode only: search bar for "My Scripts". No tabs
+      // anymore — built-in scripts were never meant to appear here.
       bottom: _currentStep == 2 && _isScriptBasedMode
           ? PreferredSize(
-              preferredSize: const Size.fromHeight(kToolbarHeight + 48),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                    child: TextField(
-                      controller: _searchCtrl,
-                      onChanged: (v) =>
-                          setState(() => _searchQuery = v.toLowerCase()),
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: 'Search scripts...',
-                        hintStyle: const TextStyle(color: Colors.white54),
-                        prefixIcon:
-                            const Icon(Icons.search, color: Colors.white54),
-                        suffixIcon: _searchQuery.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear,
-                                    color: Colors.white54),
-                                onPressed: () {
-                                  _searchCtrl.clear();
-                                  setState(() => _searchQuery = '');
-                                },
-                              )
-                            : null,
-                        filled: true,
-                        fillColor: Colors.white.withValues(alpha: 0.1),
-                        contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
+              preferredSize: const Size.fromHeight(kToolbarHeight + 8),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: TextField(
+                  controller: _searchCtrl,
+                  onChanged: (v) =>
+                      setState(() => _searchQuery = v.toLowerCase()),
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'Search your scripts...',
+                    hintStyle: const TextStyle(color: Colors.white54),
+                    prefixIcon:
+                        const Icon(Icons.search, color: Colors.white54),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear,
+                                color: Colors.white54),
+                            onPressed: () {
+                              _searchCtrl.clear();
+                              setState(() => _searchQuery = '');
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: Colors.white.withValues(alpha: 0.1),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
                     ),
                   ),
-                  TabBar(
-                    controller: _tabs,
-                    indicatorColor: Colors.white,
-                    indicatorWeight: 3,
-                    labelColor: Colors.white,
-                    unselectedLabelColor: Colors.white54,
-                    labelStyle: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600),
-                    tabs: [
-                      const Tab(text: 'Built-in'),
-                      Tab(text: 'My Scripts (${_uploadedScripts.length})'),
-                    ],
-                  ),
-                ],
+                ),
               ),
             )
           : null,
@@ -1137,37 +1087,27 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
   }
 
   // ── Step 2: Script List ──────────────────────────────
+  // Script-Based mode: "My Scripts" only — built-in scripts were never
+  // meant to appear here (per product decision). Other modes: unchanged,
+  // rotated built-in picks with no tabs, as before.
   Widget _buildScriptList() {
     if (_error != null) return _buildErrorView();
 
-    if (!_isScriptBasedMode) {
-      return _buildBuiltinTab();
+    if (_isScriptBasedMode) {
+      return _buildMyScriptsList();
     }
-
-    return TabBarView(
-      controller: _tabs,
-      children: [
-        _buildBuiltinTab(),
-        _buildMyScriptsTab(),
-      ],
-    );
+    return _buildBuiltinRotationList();
   }
 
-  Widget _buildBuiltinTab() {
+  Widget _buildBuiltinRotationList() {
     return RefreshIndicator(
-      onRefresh: _refreshBuiltin,
+      onRefresh: _refreshScripts,
       color: _primary,
-      child: _filteredBuiltin.isEmpty
+      child: _builtinScripts.isEmpty
           ? _buildEmptyView(
               icon: Icons.library_books_outlined,
-              message: _builtinScripts.isEmpty
-                  ? 'No scripts found for this mode & level'
-                  : 'No scripts match your search',
-              hint: _builtinScripts.isEmpty
-                  ? (_isScriptBasedMode
-                      ? 'Try a different level or upload your own'
-                      : 'Pull down to try fetching scripts again')
-                  : 'Try a different search term',
+              message: 'No scripts found for this mode & level',
+              hint: 'Pull down to try fetching scripts again',
             )
           : LayoutBuilder(
               builder: (context, constraints) {
@@ -1183,33 +1123,37 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen>
                       crossAxisSpacing: 16,
                       mainAxisSpacing: 16,
                     ),
-                    itemCount: _filteredBuiltin.length,
+                    itemCount: _builtinScripts.length,
                     itemBuilder: (ctx, i) =>
-                        _scriptCard(_filteredBuiltin[i], isBuiltin: true),
+                        _scriptCard(_builtinScripts[i], isBuiltin: true),
                   );
                 }
 
                 return ListView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-                  itemCount: _filteredBuiltin.length,
+                  itemCount: _builtinScripts.length,
                   itemBuilder: (ctx, i) =>
-                      _scriptCard(_filteredBuiltin[i], isBuiltin: true),
+                      _scriptCard(_builtinScripts[i], isBuiltin: true),
                 );
               },
             ),
     );
   }
 
-  Widget _buildMyScriptsTab() {
+  Widget _buildMyScriptsList() {
     return RefreshIndicator(
       onRefresh: () => _loadScripts(silent: true),
       color: _primary,
       child: _filteredUploaded.isEmpty
           ? _buildEmptyView(
               icon: Icons.folder_open_outlined,
-              message: 'No custom scripts yet',
-              hint: 'Tap the + button to upload or type a script',
-              showAddButton: true,
+              message: _uploadedScripts.isEmpty
+                  ? 'No custom scripts yet'
+                  : 'No scripts match your search',
+              hint: _uploadedScripts.isEmpty
+                  ? 'Tap the + button to upload or type a script'
+                  : 'Try a different search term',
+              showAddButton: _uploadedScripts.isEmpty,
             )
           : LayoutBuilder(
               builder: (context, constraints) {
