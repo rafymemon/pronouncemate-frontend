@@ -99,7 +99,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   double _bestScore = 0;
   List<Map<String, dynamic>> _recentSessions = [];
   Map<String, dynamic> _quickStats = {};
-  List<double> _sparkline = [];
   Map<String, dynamic> _improvement = {};
   List<Map<String, dynamic>> _focusWords = [];
   Map<String, double> _modeScores = {};
@@ -155,9 +154,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       _recentSessions =
           List<Map<String, dynamic>>.from(data['recent_sessions'] ?? []);
       _quickStats = Map<String, dynamic>.from(data['quick_stats'] ?? {});
-      _sparkline = List<double>.from(
-          (data['sparkline'] as List?)?.map((e) => (e as num).toDouble()) ??
-              []);
       _improvement = Map<String, dynamic>.from(data['improvement'] ?? {});
       _focusWords = List<Map<String, dynamic>>.from(data['focus_words'] ?? []);
       _modeScores = (data['mode_scores'] as Map<String, dynamic>?)?.map(
@@ -279,10 +275,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                     focusScript: _focusScript!,
                     onStart: _startFocusScript,
                   ),
-                  const SizedBox(height: 24),
-                ],
-                if (_sparkline.length >= 2) ...[
-                  _buildWeeklyHeatmap(),
                   const SizedBox(height: 24),
                 ],
                 if ((_improvement['percentage_change'] as num?)?.toDouble() !=
@@ -556,110 +548,6 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           );
         },
-      ),
-    );
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // WEEKLY HEATMAP — Unique visual using sparkline data
-  // ═══════════════════════════════════════════════════════
-
-  Widget _buildWeeklyHeatmap() {
-    final days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-    final values = _sparkline.length >= 7
-        ? _sparkline.sublist(_sparkline.length - 7)
-        : _sparkline;
-    final displayValues = values.isEmpty ? List.filled(7, 0.0) : values;
-
-    return _glassCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _ResponsiveCardHeader(
-            title: const Text('Weekly Activity',
-                style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary)),
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                  color: const Color(0xFFDCFCE7),
-                  borderRadius: BorderRadius.circular(20)),
-              child: Text('${_sparkline.length} sessions',
-                  style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF16A34A),
-                      fontWeight: FontWeight.w600)),
-            ),
-          ),
-          const SizedBox(height: 16),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final cellSize =
-                  ((constraints.maxWidth - 6 * 8) / 7).clamp(24.0, 36.0);
-              return Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: List.generate(7, (idx) {
-                  final val =
-                      idx < displayValues.length ? displayValues[idx] : 0.0;
-                  final intensity = (val / 100).clamp(0.05, 1.0);
-                  return TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0.0, end: 1.0),
-                    duration: Duration(milliseconds: 400 + idx * 80),
-                    curve: Curves.easeOutBack,
-                    builder: (context, t, child) {
-                      final safeT = t.clamp(0.0, 1.0);
-                      return Opacity(
-                        opacity: safeT,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: cellSize,
-                              height: cellSize,
-                              decoration: BoxDecoration(
-                                color: Color.lerp(const Color(0xFFF1F5F9),
-                                    AppColors.accent, intensity * safeT),
-                                borderRadius: BorderRadius.circular(10),
-                                boxShadow: intensity > 0.6
-                                    ? [
-                                        BoxShadow(
-                                            color: AppColors.accent
-                                                .withValues(alpha: 0.25),
-                                            blurRadius: 8)
-                                      ]
-                                    : null,
-                              ),
-                              child: Center(
-                                child: Text(
-                                  '${val.toInt()}',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    color: intensity > 0.4
-                                        ? Colors.white
-                                        : const Color(0xFF64748B),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(days[idx],
-                                style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Color(0xFF94A3B8),
-                                    fontWeight: FontWeight.w500)),
-                          ],
-                        ),
-                      );
-                    },
-                  );
-                }),
-              );
-            },
-          ),
-        ],
       ),
     );
   }

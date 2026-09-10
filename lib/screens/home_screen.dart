@@ -47,6 +47,8 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   UserProgressSummary _emptySummary() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     return UserProgressSummary(
       displayName: UserSession.instance.name,
       totalSessions: 0,
@@ -57,6 +59,14 @@ class HomeScreenState extends State<HomeScreen> {
       todaySessions: 0,
       goalTarget: 2,
       recentSessions: const [],
+      weeklyAccuracy: List.generate(
+        7,
+        (i) => DayAccuracy(
+          date: today.subtract(Duration(days: 6 - i)),
+          averageAccuracy: 0,
+          sessionCount: 0,
+        ),
+      ),
     );
   }
 
@@ -364,16 +374,19 @@ class HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 28),
 
+                    // ── Weekly Activity Heatmap (moved from Dashboard) ─
+                    _WeeklyActivityCard(data: summary.weeklyAccuracy),
+                    const SizedBox(height: 28),
+
                     // ── Quick Stats ──────────────────────────────────
                     Row(
                       children: [
                         const Expanded(
                           child: SectionHeader(
                             title: 'Your Progress',
-                            subtitle: 'From your recent activity',
+                            subtitle: 'Last 7 days',
                           ),
-                        ),
-                        TextButton(
+                        ),                        TextButton(
                           onPressed: _openDetailedAnalytics,
                           style: TextButton.styleFrom(
                             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -406,19 +419,19 @@ class HomeScreenState extends State<HomeScreen> {
                       childAspectRatio: 1.1,
                       children: [
                         StatCard(
-                          label: 'Sessions Done',
+                          label: 'Sessions (7d)',
                           value: summary.totalSessions.toString(),
                           icon: Icons.mic_rounded,
                           color: AppColors.primary,
                         ),
                         StatCard(
-                          label: 'Avg. Accuracy',
+                          label: 'Avg. Accuracy (7d)',
                           value:
                               '${summary.averageAccuracy.toStringAsFixed(0)}%',
                           icon: Icons.track_changes_rounded,
                           color: AppColors.success,
                         ),
-                        StatCard(
+                                                StatCard(
                           label: 'Words Practiced',
                           value: summary.wordsPracticed == null
                               ? '—'
@@ -436,14 +449,17 @@ class HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 28),
 
-                    // ── Recent Sessions ──────────────────────────────
-                    const SectionHeader(title: 'Recent Sessions'),
+                    // ── Recent Sessions (last 7 days) ────────────────
+                    const SectionHeader(
+                      title: 'Recent Sessions',
+                      subtitle: 'From the last 7 days',
+                    ),
                     const SizedBox(height: 14),
                     if (summary.recentSessions.isEmpty)
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 12),
                         child: Text(
-                          'No sessions yet. Start a practice run to see your history here.',
+                          'No sessions in the last 7 days. Start a practice run to see your history here.',
                           style: TextStyle(color: AppColors.textSecondary),
                         ),
                       )
@@ -465,6 +481,141 @@ class HomeScreenState extends State<HomeScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+// ── Weekly Activity Heatmap ─────────────────────────────────────────
+// Shows the last 7 calendar days with each day's real average accuracy,
+// computed live from the user's sessions (see UserProgressService).
+class _WeeklyActivityCard extends StatelessWidget {
+  final List<DayAccuracy> data;
+  const _WeeklyActivityCard({required this.data});
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  String _weekdayLetter(int weekday) {
+    const letters = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    return letters[weekday - 1];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sessionsThisWeek =
+        data.fold<int>(0, (sum, d) => sum + d.sessionCount);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(
+              color: AppColors.cardShadow, blurRadius: 8, offset: Offset(0, 3)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text('Weekly Activity',
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary)),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                    color: const Color(0xFFDCFCE7),
+                    borderRadius: BorderRadius.circular(20)),
+                child: Text('$sessionsThisWeek sessions',
+                    style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF16A34A),
+                        fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final cellSize =
+                  ((constraints.maxWidth - 6 * 8) / 7).clamp(24.0, 36.0);
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: List.generate(data.length, (idx) {
+                  final day = data[idx];
+                  final intensity = (day.averageAccuracy / 100).clamp(0.05, 1.0);
+                  final isToday = _isSameDay(day.date, DateTime.now());
+
+                  return TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: Duration(milliseconds: 400 + idx * 80),
+                    curve: Curves.easeOutBack,
+                    builder: (context, t, child) {
+                      final safeT = t.clamp(0.0, 1.0);
+                      return Opacity(
+                        opacity: safeT,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: cellSize,
+                              height: cellSize,
+                              decoration: BoxDecoration(
+                                color: Color.lerp(const Color(0xFFF1F5F9),
+                                    AppColors.accent, intensity * safeT),
+                                borderRadius: BorderRadius.circular(10),
+                                border: isToday
+                                    ? Border.all(
+                                        color: AppColors.primary, width: 1.5)
+                                    : null,
+                                boxShadow: intensity > 0.6
+                                    ? [
+                                        BoxShadow(
+                                            color: AppColors.accent
+                                                .withValues(alpha: 0.25),
+                                            blurRadius: 8)
+                                      ]
+                                    : null,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  day.sessionCount == 0
+                                      ? '—'
+                                      : '${day.averageAccuracy.toInt()}',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: intensity > 0.4
+                                        ? Colors.white
+                                        : const Color(0xFF64748B),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(_weekdayLetter(day.date.weekday),
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF94A3B8),
+                                    fontWeight: FontWeight.w500)),
+                          ],
+                        ),
+                      );
+                    },
+                  );
+                }),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }

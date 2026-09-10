@@ -98,11 +98,18 @@ class ApiService {
   }
   
   // ── Session history ─────────────────────────────────────
-  static Future<List<dynamic>> getSessions() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/sessions/'),
-      headers: await authHeaders,
+    // ── Session history ─────────────────────────────────────
+  // Pass `days` to restrict to a recent window (e.g. 7) instead of
+  // fetching-then-filtering the user's whole history client-side.
+  static Future<List<dynamic>> getSessions({int? days}) async {
+    final params = <String, String>{};
+    if (days != null) params['days'] = days.toString();
+
+    final uri = Uri.parse('$baseUrl/sessions/').replace(
+      queryParameters: params.isEmpty ? null : params,
     );
+
+    final response = await http.get(uri, headers: await authHeaders);
     return jsonDecode(response.body);
   }
 

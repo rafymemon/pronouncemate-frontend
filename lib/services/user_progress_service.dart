@@ -2,6 +2,16 @@ import 'package:flutter/foundation.dart';
 import '../services/api_service.dart';
 import 'user_session.dart';
 
+/// Home screen's progress summary. IMPORTANT SCOPE NOTE:
+/// totalSessions, bestScore, averageAccuracy, wordsPracticed, recentSessions,
+/// weeklyAccuracy, and todaySessions are all scoped to the LAST 7 DAYS —
+/// this class exists to power the Home screen's "recent activity" section.
+/// All-time totals live separately in DashboardScreen, which fetches its
+/// own unfiltered aggregates via ApiService.getDashboardSummary() and does
+/// not use this class at all.
+///
+/// streakDays is the one exception: it's a running consecutive-days count,
+/// not a windowed stat, so it remains all-time (sourced from the backend).
 class UserProgressSummary {
   final String displayName;
   final int totalSessions;
@@ -12,6 +22,7 @@ class UserProgressSummary {
   final int todaySessions;
   final int goalTarget;
   final List<SessionSnapshot> recentSessions;
+  final List<DayAccuracy> weeklyAccuracy;
 
   const UserProgressSummary({
     required this.displayName,
@@ -23,12 +34,15 @@ class UserProgressSummary {
     required this.todaySessions,
     required this.goalTarget,
     required this.recentSessions,
+    required this.weeklyAccuracy,
   });
 
   // 👇 FIXED: Added clamp to prevent UI crashes if the user exceeds their daily goal (e.g. 3/2 sessions = 1.5)
   double get goalProgress => (goalTarget == 0 ? 0.0 : todaySessions / goalTarget).clamp(0.0, 1.0);
 }
 
+/// A single practice session, always drawn from the last-7-days window
+/// (see UserProgressSummary's scope note).
 class SessionSnapshot {
   final String title;
   final String dateLabel;
@@ -42,6 +56,24 @@ class SessionSnapshot {
     required this.score,
     required this.grade,
     required this.durationLabel,
+  });
+}
+
+/// One calendar day's aggregated practice accuracy, used to drive the
+/// "Weekly Activity" heatmap. Sourced from the backend's
+/// `weekly_accuracy` (a real GROUP BY date query — see
+/// `_compute_weekly_accuracy` in api/views.py), with a client-side
+/// fallback computed from the 7-day session list if that field is
+/// missing (e.g. talking to an older backend, or offline/cached data).
+class DayAccuracy {
+  final DateTime date;
+  final double averageAccuracy;
+  final int sessionCount;
+
+  const DayAccuracy({
+    required this.date,
+    required this.averageAccuracy,
+    required this.sessionCount,
   });
 }
 
@@ -60,7 +92,9 @@ class UserProgressService extends ChangeNotifier {
     try {
       final results = await Future.wait([
         ApiService.getProfile(),
-        ApiService.getSessions(),
+        // Backend-filtered to the last 7 days. This IS the recent-activity
+        // window Home shows — not an approximation of it.
+        ApiService.getSessions(days: 7),
       ]);
 
       final profile = results[0] as Map<String, dynamic>;
@@ -77,21 +111,25 @@ class UserProgressService extends ChangeNotifier {
         return rightDate.compareTo(leftDate);
       });
 
-      final totalSessions = _readInt(profile, const [
-            'total_sessions',
-            'session_count',
-            'total_session_count',
-          ]) ??
-          sessions.length;
-
-      final bestScore = _readDouble(profile, const [
-            'best_score',
-            'best_accuracy',
-            'max_score',
-          ]) ??
-          _bestScoreFromSessions(sessions);
-
+      // ── Everything below (except streak) is computed from `sessions`,
+      // which is already the exact 7-day window — not a fallback, the
+      // primary source. All-time equivalents live only in DashboardScreen,
+      // which never touches this service. ──
+      final totalSessions = sessions.length;
+      final bestScore = _bestScoreFromSessions(sessions);
       final averageAccuracy = _averageAccuracy(sessions);
+      final wordsPracticed = _wordsPracticedFromSessions(sessions);
+
+      final todaySessions = sessions.where((session) {
+        final date = _parseDate(session['created_at']?.toString());
+        return date != null && _isSameDay(date, DateTime.now());
+      }).length;
+
+      // Streak is a running consecutive-days status, not a windowed stat —
+      // stays all-time, sourced from the backend (accurate regardless of
+      // window). The client fallback can only detect up to 7 consecutive
+      // days since `sessions` here is 7-day-scoped; that's an accepted
+      // limitation of the fallback path only.
       final streakDays = _readInt(profile, const [
             'streak_days',
             'current_streak',
@@ -99,20 +137,7 @@ class UserProgressService extends ChangeNotifier {
           ]) ??
           _streakFromSessions(sessions);
 
-      final wordsPracticed = _readInt(profile, const [
-            'words_practiced',
-            'words_practiced_total',
-            'total_words',
-            'word_count',
-          ]) ??
-          _wordsPracticedFromSessions(sessions);
-
-      final todaySessions = sessions.where((session) {
-        final date = _parseDate(session['created_at']?.toString());
-        return date != null && _isSameDay(date, DateTime.now());
-      }).length;
-
-      final recentSessions = sessions.take(3).map((session) {
+      final recentSessions = sessions.map((session) {
         final date = _parseDate(session['created_at']?.toString());
         final score = _readDouble(session, const ['accuracy', 'score']) ?? 0;
         return SessionSnapshot(
@@ -132,6 +157,11 @@ class UserProgressService extends ChangeNotifier {
         );
       }).toList();
 
+      // ── Weekly heatmap: backend-computed (real GROUP BY date), with a
+      // client-side fallback if the field is absent. ──
+      final weeklyAccuracy = _parseWeeklyAccuracy(profile['weekly_accuracy']) ??
+          _weeklyAccuracyFromSessions(sessions);
+
       final summary = UserProgressSummary(
         displayName: UserSession.instance.name,
         totalSessions: totalSessions,
@@ -142,6 +172,7 @@ class UserProgressService extends ChangeNotifier {
         todaySessions: todaySessions,
         goalTarget: goalTarget,
         recentSessions: recentSessions,
+        weeklyAccuracy: weeklyAccuracy,
       );
       _cachedSummary = summary;
       return summary;
@@ -161,6 +192,7 @@ class UserProgressService extends ChangeNotifier {
         todaySessions: 0,
         goalTarget: goalTarget,
         recentSessions: const [],
+        weeklyAccuracy: _emptyWeek(),
       );
     }
   }
@@ -202,6 +234,7 @@ class UserProgressService extends ChangeNotifier {
     return null;
   }
 
+  /// Best score within the given session list (7-day window in normal use).
   static double _bestScoreFromSessions(List<Map<String, dynamic>> sessions) {
     var best = 0.0;
     for (final session in sessions) {
@@ -211,6 +244,7 @@ class UserProgressService extends ChangeNotifier {
     return best;
   }
 
+  /// Average accuracy within the given session list (7-day window in normal use).
   static double _averageAccuracy(List<Map<String, dynamic>> sessions) {
     if (sessions.isEmpty) return 0;
     var total = 0.0;
@@ -242,6 +276,11 @@ class UserProgressService extends ChangeNotifier {
     return streak;
   }
 
+  /// Words practiced within the given session list (7-day window in normal
+  /// use). No backend-aggregated equivalent is used here on purpose — the
+  /// backend's `words_practiced` on ProfileView is an ALL-TIME sum
+  /// (Dashboard's "Words" quick stat uses the equivalent all-time value);
+  /// Home needs the 7-day figure, which this list already is.
   static int? _wordsPracticedFromSessions(List<Map<String, dynamic>> sessions) {
     var total = 0;
     var foundAny = false;
@@ -271,6 +310,71 @@ class UserProgressService extends ChangeNotifier {
       }
     }
     return foundAny ? total : null;
+  }
+
+  /// Parses the backend's `weekly_accuracy` field —
+  /// `[{date, average_accuracy, session_count}, ...]`, oldest → newest —
+  /// into `DayAccuracy` objects. Returns null if the field is missing or
+  /// malformed, so the caller can fall back to client-side computation.
+  static List<DayAccuracy>? _parseWeeklyAccuracy(dynamic raw) {
+    if (raw is! List || raw.isEmpty) return null;
+    try {
+      return raw.map((entry) {
+        final map = Map<String, dynamic>.from(entry as Map);
+        return DayAccuracy(
+          date: DateTime.parse(map['date'].toString()),
+          averageAccuracy:
+              (map['average_accuracy'] as num?)?.toDouble() ?? 0.0,
+          sessionCount: (map['session_count'] as num?)?.toInt() ?? 0,
+        );
+      }).toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Fallback only — used if the backend's `weekly_accuracy` field is
+  /// absent (e.g. talking to an older API version) or unparsable.
+  static List<DayAccuracy> _weeklyAccuracyFromSessions(
+      List<Map<String, dynamic>> sessions) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    final Map<String, List<double>> scoresByDay = {};
+    for (final session in sessions) {
+      final date = _parseDate(session['created_at']?.toString());
+      if (date == null) continue;
+      final day = DateTime(date.year, date.month, date.day);
+      final diff = today.difference(day).inDays;
+      if (diff < 0 || diff > 6) continue;
+
+      final score = _readDouble(session, const ['accuracy', 'score']);
+      if (score == null) continue;
+
+      scoresByDay.putIfAbsent(_dayKey(day), () => []).add(score);
+    }
+
+    return List.generate(7, (i) {
+      final day = today.subtract(Duration(days: 6 - i));
+      final scores = scoresByDay[_dayKey(day)] ?? const <double>[];
+      final avg = scores.isEmpty
+          ? 0.0
+          : scores.reduce((a, b) => a + b) / scores.length;
+      return DayAccuracy(
+        date: day,
+        averageAccuracy: avg,
+        sessionCount: scores.length,
+      );
+    });
+  }
+
+  static List<DayAccuracy> _emptyWeek() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return List.generate(7, (i) {
+      final day = today.subtract(Duration(days: 6 - i));
+      return DayAccuracy(date: day, averageAccuracy: 0, sessionCount: 0);
+    });
   }
 
   // 👇 FIXED: Changed return type to String? and removed literal 'null.toString()'
