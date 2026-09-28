@@ -20,7 +20,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic> _profile = {};
   String? _errorMsg;
 
-  // Settings toggles (local only — extend to backend if needed)
+  // All four toggles now initialize from the backend in _loadProfile()
+  // and persist through ApiService.updateProfile() on change — none of
+  // them are local-only anymore.
   bool _voiceFeedback      = true;
   bool _dailyReminders     = true;
   bool _autoSaveRecordings = false;
@@ -58,7 +60,13 @@ static const _levelIcons = {
       setState(() { _loading = false; _errorMsg = data['error'].toString(); });
       return;
     }
-    setState(() { _loading = false; _profile = data; });
+    setState(() {
+      _loading = false;
+      _profile = data;
+      _voiceFeedback = data['voice_feedback'] as bool? ?? true;
+      _dailyReminders = data['daily_reminders'] as bool? ?? true;
+      _autoSaveRecordings = data['auto_save_recordings'] as bool? ?? false;
+    });
   }
 
   // ── Getters ──────────────────────────────────────────────
@@ -98,6 +106,60 @@ static const _levelIcons = {
     } else {
       _showSuccess('Name updated');
     }
+  }
+
+  // ── Generic optimistic-toggle persister ────────────────────
+  // All four Practice/App Settings switches follow the same pattern:
+  // flip locally, PATCH the backend, roll back + show an error on
+  // failure. Factored into one helper so each toggle is a one-liner.
+  Future<void> _persistToggle({
+    required String field,
+    required bool value,
+    required bool previous,
+    required VoidCallback onRollback,
+    required String errorMessage,
+  }) async {
+    final res = await ApiService.updateProfile({field: value});
+    if (res['error'] != null) {
+      onRollback();
+      _showError(errorMessage);
+    }
+  }
+
+  Future<void> _updateVoiceFeedback(bool value) async {
+    final prev = _voiceFeedback;
+    setState(() => _voiceFeedback = value);
+    await _persistToggle(
+      field: 'voice_feedback',
+      value: value,
+      previous: prev,
+      onRollback: () => setState(() => _voiceFeedback = prev),
+      errorMessage: 'Could not update voice feedback setting',
+    );
+  }
+
+  Future<void> _updateDailyReminders(bool value) async {
+    final prev = _dailyReminders;
+    setState(() => _dailyReminders = value);
+    await _persistToggle(
+      field: 'daily_reminders',
+      value: value,
+      previous: prev,
+      onRollback: () => setState(() => _dailyReminders = prev),
+      errorMessage: 'Could not update reminder setting',
+    );
+  }
+
+  Future<void> _updateAutoSaveRecordings(bool value) async {
+    final prev = _autoSaveRecordings;
+    setState(() => _autoSaveRecordings = value);
+    await _persistToggle(
+      field: 'auto_save_recordings',
+      value: value,
+      previous: prev,
+      onRollback: () => setState(() => _autoSaveRecordings = prev),
+      errorMessage: 'Could not update auto-save setting',
+    );
   }
 
   Future<void> _clearHistory() async {
@@ -196,7 +258,6 @@ static const _levelIcons = {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // Avatar
             Container(
               width: 70,
               height: 70,
@@ -214,8 +275,6 @@ static const _levelIcons = {
               ),
             ),
             const SizedBox(width: 16),
-
-            // Name + username + email
             Expanded(child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -246,8 +305,6 @@ static const _levelIcons = {
                 ],
               ],
             )),
-
-            // Edit button
             IconButton(
               icon: const Icon(Icons.edit_outlined,
                   color: Colors.white70, size: 22),
@@ -257,10 +314,7 @@ static const _levelIcons = {
               constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
             ),
           ]),
-
           const SizedBox(height: 14),
-
-          // Member since + level badges — wraps on narrow screens
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -304,14 +358,14 @@ static const _levelIcons = {
         title: 'Voice Feedback',
         subtitle: 'Play audio corrections for mispronounced words',
         value: _voiceFeedback,
-        onChanged: (v) => setState(() => _voiceFeedback = v),
+        onChanged: _updateVoiceFeedback,
       ),
       _tileSwitch(
         icon: Icons.save_alt_rounded,
         title: 'Auto-Save Recordings',
         subtitle: 'Store session audio for personal review',
         value: _autoSaveRecordings,
-        onChanged: (v) => setState(() => _autoSaveRecordings = v),
+        onChanged: _updateAutoSaveRecordings,
       ),
       _tileAction(
         icon: Icons.translate_rounded,
@@ -330,7 +384,7 @@ static const _levelIcons = {
         title: 'Daily Practice Reminders',
         subtitle: 'Get notified to practice every day',
         value: _dailyReminders,
-        onChanged: (v) => setState(() => _dailyReminders = v),
+        onChanged: _updateDailyReminders,
       ),
       _tileAction(
         icon: Icons.lock_outline_rounded,
@@ -810,6 +864,7 @@ static const _levelIcons = {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg),
       backgroundColor: isInfo ? AppColors.primary : AppColors.error,
+      duration: const Duration(seconds: 3),
     ));
   }
 }

@@ -26,32 +26,11 @@ class PracticeApiService {
     };
   }
 
-  /// Submit audio for main pronunciation evaluation
-  static Future<Map<String, dynamic>> submitPronunciation(
-    File audioFile,
-    String script, {
-    String? userId,
-  }) async {
-    final token = await _getToken();
-    var request = http.MultipartRequest(
-      'POST',
-      Uri.parse('$baseUrl/pronounce/'),
-    );
-    if (token != null) request.headers['Authorization'] = 'Token $token';
-
-    request.files.add(await http.MultipartFile.fromPath(
-      'audio',
-      audioFile.path,
-      contentType: MediaType('audio', 'wav'),
-    ));
-
-    request.fields['script'] = script;
-    if (userId != null) request.fields['user_id'] = userId;
-
-    var response = await request.send();
-    var responseData = await response.stream.bytesToString();
-    return jsonDecode(responseData);
-  }
+  // FIX: removed submitPronunciation() — it posted to '$baseUrl/pronounce/',
+  // which does not exist as a backend route (the real endpoint is
+  // '/api/analyze/', already correctly called via
+  // ApiService.analyzeAudio() in active_session_screen.dart). This method
+  // was never called from any screen and would have 404'd if it had been.
 
   /// Get practice script preview (before recording)
   static Future<Map<String, dynamic>> getPracticeScript(

@@ -1,3 +1,4 @@
+// lib/services/auth_service.dart
 import 'dart:convert';
 import 'package:flutter/foundation.dart'; // Required for kIsWeb
 import 'package:http/http.dart' as http;

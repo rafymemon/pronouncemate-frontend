@@ -35,6 +35,10 @@ class MistakeWordChip extends StatelessWidget {
         return Icons.skip_next;
       case 'stress':
         return Icons.record_voice_over;
+      case 'minor':
+        // Close-but-not-exact acoustic read — distinct from a hard error
+        // so it doesn't visually read the same as substitution/omission.
+        return Icons.info_outline;
       default:
         return Icons.error;
     }

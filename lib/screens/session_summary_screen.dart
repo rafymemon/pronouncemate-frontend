@@ -1,27 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../theme/app_theme.dart';
+import '../services/api_service.dart';
 import 'active_session_screen.dart';
 import 'practice_session_screen.dart';
-import '../widgets/practice_mistake_button.dart';
 import '../models/practice_models.dart';
-import '../models/word_status.dart';   // ← ADDED: DisplayWord, WordStatus now live here
+import '../models/word_status.dart';   // ← DisplayWord, WordStatus live here
 import '../config.dart';
 
 class SessionSummaryScreen extends StatelessWidget {
-  final List<DisplayWord> words;   // ← CHANGED from List<WordResult>
+  final List<DisplayWord> words;
   final double sessionScore;
   final String script;
   final String sessionTitle;
   final String originalSessionId;
   final String? recordingUrl;
 
-  // ── NEW: official backend stats ──
+  // ── official backend stats ──
   final double? wordAccuracy;
   final int? correctWords;
   final int? wrongWords;
   final int? totalWords;
   final Map<String, dynamic>? stats;
+
+  // ── Focus Script returned by /api/analyze/ for this session ──
+  // (same object the Dashboard's Focus Script card shows). When it is
+  // null/empty the Practice Mistakes button fetches the latest one instead.
+  final Map<String, dynamic>? focusScript;
 
   const SessionSummaryScreen({
     super.key,
@@ -36,27 +41,41 @@ class SessionSummaryScreen extends StatelessWidget {
     this.wrongWords,
     this.totalWords,
     this.stats,
+    this.focusScript,
   });
 
   @override
   Widget build(BuildContext context) {
-    // ── FIX: Use backend stats when available, otherwise fall back to local ──
+    // ── Use backend stats when available, otherwise fall back to local ──
     final correctCount = correctWords ??
-        words.where((w) => w.status == WordStatus.correct).length;
+        words.where((w) =>
+            w.status == WordStatus.correct || w.status == WordStatus.accent).length;
     final errorCount = wrongWords ??
         words
             .where((w) =>
-                w.status == WordStatus.error || w.status == WordStatus.skipped)
+                w.status == WordStatus.error ||
+                w.status == WordStatus.skipped ||
+                w.status == WordStatus.minor)
             .length;
     final totalCount = totalWords ?? words.length;
     final displayScore = wordAccuracy ?? sessionScore;
     final grade = _getGrade(displayScore);
     final gradeColor = _gradeColor(displayScore);
 
-    // Get all words that are either incorrect or skipped
+    // Get all words that are hard errors, skipped, OR minor slips.
+    // 'accent' (forgiven pronunciation variant) is deliberately excluded —
+    // it's not a mistake. 'minor' IS included: pipeline.py's
+    // _build_mistake_summary already treats 'minor' as a real, practiceable
+    // mistake (it only excludes 'correct'/'inserted'/'accent'), so excluding
+    // it here would silently hide minor slips from both this list AND the
+    // Practice Mistakes flow, even though the header count above already
+    // counts them as "wrong".
     final errors = words
-    .where((w) => w.status == WordStatus.error || w.status == WordStatus.skipped)
-    .toList();
+        .where((w) =>
+            w.status == WordStatus.error ||
+            w.status == WordStatus.skipped ||
+            w.status == WordStatus.minor)
+        .toList();
 
     // Build severity breakdown from error types
     final severityBreakdown = <String, int>{};
@@ -211,13 +230,23 @@ class SessionSummaryScreen extends StatelessWidget {
                       fontWeight: FontWeight.bold,
                       color: AppColors.brandBlue)),
               const SizedBox(height: 12),
-              ...errors.map((e) => Container(
+              ...errors.map((e) {
+                // 'minor' slips get softer amber styling instead of red —
+                // they're flagged for practice, but visually distinct from
+                // a hard error/omission/substitution so the severity actually
+                // read as different, not just internally scored differently.
+                final isMinor = e.status == WordStatus.minor;
+                final cardBorder = isMinor ? const Color(0xFFFFD9A8) : Colors.red.shade100;
+                final chipBg = isMinor ? const Color(0xFFFFE9D6) : Colors.red.shade50;
+                final chipText = isMinor ? const Color(0xFFB35900) : Colors.red.shade700;
+
+                return Container(
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.red.shade100),
+                      border: Border.all(color: cardBorder),
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -226,7 +255,7 @@ class SessionSummaryScreen extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: Colors.red.shade50,
+                            color: chipBg,
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Row(
@@ -236,7 +265,7 @@ class SessionSummaryScreen extends StatelessWidget {
                                   style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold,
-                                      color: Colors.red.shade700)),
+                                      color: chipText)),
                               const SizedBox(width: 4),
                               PronunciationAudioButton(
                                 audioUrl: AppConfig.mediaUrl(e.audioPath),
@@ -247,7 +276,7 @@ class SessionSummaryScreen extends StatelessWidget {
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment:CrossAxisAlignment.start,
                             children: [
                               Text((e.type ?? 'error').toUpperCase(),
                                   style: const TextStyle(
@@ -270,7 +299,8 @@ class SessionSummaryScreen extends StatelessWidget {
                         ),
                       ],
                     ),
-                  )),
+                  );
+              }),
             ],
 
             if (errors.isEmpty)
@@ -378,8 +408,68 @@ class SessionSummaryScreen extends StatelessWidget {
     return Colors.redAccent;
   }
 
-void _startPracticeSession(
-      BuildContext context, List<DisplayWord> errorWords) {   // ← CHANGED
+  /// Pulls a non-empty `script_text` out of a focus-script map, or null.
+  static String? _extractScriptText(dynamic focusScript) {
+    if (focusScript is Map) {
+      final text = focusScript['script_text'];
+      if (text is String && text.trim().isNotEmpty) return text;
+    }
+    return null;
+  }
+
+  /// Practice Mistakes → opens the same Focus Script the Dashboard shows.
+  ///
+  /// 1. Uses the focus script that came back with this session's analysis
+  ///    (`focusScript`, no extra request).
+  /// 2. If that is missing, asks the backend for the latest one
+  ///    (getLatestFocusScript — exactly what the Dashboard calls).
+  /// 3. If there is still none (nothing generated yet, network error, empty
+  ///    script) it falls back to the old word-by-word PracticeSessionScreen
+  ///    so the button never dead-ends.
+  Future<void> _startPracticeSession(
+      BuildContext context, List<DisplayWord> errorWords) async {
+    String? focusScriptText = _extractScriptText(focusScript);
+
+    if (focusScriptText == null) {
+      // Root navigator is used for the loading dialog because showDialog
+      // pushes onto the root navigator by default.
+      final rootNavigator = Navigator.of(context, rootNavigator: true);
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+      );
+
+      try {
+        final data = await ApiService.getLatestFocusScript();
+        focusScriptText = _extractScriptText(data['focus_script']);
+      } catch (e) {
+        debugPrint('Focus script fetch failed: $e');
+      }
+
+      // Close the loading dialog (screen may have been disposed meanwhile).
+      if (rootNavigator.canPop()) rootNavigator.pop();
+      if (!context.mounted) return;
+    }
+
+    // ── Preferred path: the session's Focus Script ──
+    if (focusScriptText != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ActiveSessionScreen(
+            scriptText: focusScriptText!,
+            sessionTitle: 'Focus Script',
+          ),
+        ),
+      );
+      return;
+    }
+
+    // ── Fallback: previous per-word practice flow ──
     final mistakeWords = errorWords
         .map((e) => MistakeWord(
               word: e.text,

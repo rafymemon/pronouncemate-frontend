@@ -106,6 +106,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   // ── Improvement Phase data ─────────────────────────
   Map<String, dynamic>? _progression;
   Map<String, dynamic>? _focusScript;
+  // FIX: was never fetched or passed to _FocusWordsSection, so the
+  // "X/3 to mastery" streak line the widget already supports never
+  // rendered even though GET /api/mastery/ works fine.
+  Map<String, Map<String, dynamic>> _masteryByWord = {};
   // Animation controllers
   late AnimationController _headerAnim;
   late AnimationController _streakPulse;
@@ -173,16 +177,28 @@ class _DashboardScreenState extends State<DashboardScreen>
     final results = await Future.wait([
       ApiService.getProgressionStatus(),
       ApiService.getLatestFocusScript(),
+      // FIX: added so Focus Words can show each word's mastery streak.
+      ApiService.getWordMastery(),
     ]);
 
     if (!mounted) return;
 
     final progressionData = results[0];
     final focusScriptData = results[1];
+    final masteryData = results[2];
+
+    final masteryList =
+        List<Map<String, dynamic>>.from(masteryData['words'] ?? []);
+    final masteryMap = <String, Map<String, dynamic>>{};
+    for (final m in masteryList) {
+      final word = (m['word'] ?? '').toString().toLowerCase();
+      if (word.isNotEmpty) masteryMap[word] = m;
+    }
 
     setState(() {
       _progression = progressionData['error'] == null ? progressionData : null;
       _focusScript = focusScriptData['focus_script'] as Map<String, dynamic>?;
+      _masteryByWord = masteryMap;
     });
   }
 
@@ -285,7 +301,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                 _ModePerformanceCard(modeScores: _modeScores),
                 const SizedBox(height: 24),
                 if (_focusWords.isNotEmpty) ...[
-                  _FocusWordsSection(words: _focusWords),
+                  _FocusWordsSection(
+                    words: _focusWords,
+                    masteryByWord: _masteryByWord,
+                  ),
                   const SizedBox(height: 24),
                 ],
                 _RecentSessionsSection(sessions: _recentSessions),
@@ -765,24 +784,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   // ═══════════════════════════════════════════════════════
   // HELPERS
   // ═══════════════════════════════════════════════════════
-
-  Widget _glassCard({required Widget child}) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.divider),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 12,
-              offset: const Offset(0, 4))
-        ],
-      ),
-      padding: const EdgeInsets.all(18),
-      child: child,
-    );
-  }
 
   String _formatMinutes(int mins) {
     if (mins < 60) return '${mins}m';
@@ -1353,11 +1354,6 @@ class _RecentSessionsSectionState extends State<_RecentSessionsSection> {
                         offset: const Offset(0, 2))
                   ],
                 ),
-                // FIX: wrapped in IntrinsicHeight so the stretched Row below
-                // (colored side-bar + content) gets a bounded height instead
-                // of an infinite one from its unconstrained sliver ancestor.
-                // This was the root cause of the
-                // "BoxConstraints forces an infinite height" crash.
                 child: IntrinsicHeight(
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,

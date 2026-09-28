@@ -1,3 +1,4 @@
+// lib/services/api_service.dart
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
@@ -6,14 +7,18 @@ import 'dart:async';
 import '../config.dart';  // ← ADDED
 
 class ApiService {
-  // REMOVED: hardcoded IP
-  // static const String ipAddress = "192.168.100.10:8000";
-  // static const String baseUrl = "http://$ipAddress/api";
-  
   // ← ADDED: Use central config
   static String get baseUrl => "${AppConfig.baseUrl}/api";
 
   // ── Token management ───────────────────────────────────
+  // NOTE: Auth (register/login/logout) is handled exclusively by
+  // AuthService (services/auth_service.dart), which owns its own token
+  // storage under the same 'auth_token' key. This class previously had
+  // its own duplicate register()/login()/logout() methods that were
+  // never called anywhere in the app — two parallel, unused auth paths
+  // writing to the same SharedPreferences key was a real footgun
+  // (whichever ran second would silently clobber the other's session).
+  // Removed. Use AuthService.instance for all auth actions.
   static Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('auth_token');
@@ -35,42 +40,6 @@ class ApiService {
       'Authorization': 'Token $token',
       'Content-Type': 'application/json',
     };
-  }
-
-  // ── Auth endpoints ─────────────────────────────────────
-  static Future<Map<String, dynamic>> register(
-      String username, String email, String password) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/register/'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'username': username,
-        'email': email,
-        'password': password,
-      }),
-    );
-    return jsonDecode(response.body);
-  }
-
-  static Future<Map<String, dynamic>> login(
-      String username, String password) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/login/'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'username': username,
-        'password': password,
-      }),
-    );
-    final data = jsonDecode(response.body);
-    if (response.statusCode == 200 && data['token'] != null) {
-      await saveToken(data['token']);
-    }
-    return data;
-  }
-
-  static Future<void> logout() async {
-    await clearToken();
   }
 
   // ── Core analyze endpoint ───────────────────────────────
@@ -98,7 +67,6 @@ class ApiService {
   }
   
   // ── Session history ─────────────────────────────────────
-    // ── Session history ─────────────────────────────────────
   // Pass `days` to restrict to a recent window (e.g. 7) instead of
   // fetching-then-filtering the user's whole history client-side.
   static Future<List<dynamic>> getSessions({int? days}) async {

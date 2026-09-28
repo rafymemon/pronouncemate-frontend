@@ -17,6 +17,10 @@ class PronunciationWordDisplay extends StatelessWidget {
     switch (s) {
       case WordStatus.correct:
         return const Color(0xFFD4EDDA);
+      case WordStatus.accent:
+        return const Color(0xFFDCF3F1);
+      case WordStatus.minor:
+        return const Color(0xFFFFE9D6);
       case WordStatus.error:
         return const Color(0xFFFFE0E0);
       case WordStatus.skipped:
@@ -30,6 +34,10 @@ class PronunciationWordDisplay extends StatelessWidget {
     switch (s) {
       case WordStatus.correct:
         return const Color(0xFF2E7D32);
+      case WordStatus.accent:
+        return const Color(0xFF1B7A72);
+      case WordStatus.minor:
+        return const Color(0xFFB35900);
       case WordStatus.error:
         return const Color(0xFFC62828);
       case WordStatus.skipped:
@@ -46,6 +54,11 @@ class PronunciationWordDisplay extends StatelessWidget {
       case WordStatus.skipped:
         return const Color(0xFFCC9A06);
       default:
+        // accent and minor deliberately get NO underline — the underline
+        // is reserved for statuses that need visual weight (hard errors,
+        // deletions). Giving accent/minor the same treatment would make
+        // them read as just as alarming as a real error, defeating the
+        // point of having a middle tier at all.
         return Colors.transparent;
     }
   }
@@ -56,7 +69,10 @@ class PronunciationWordDisplay extends StatelessWidget {
       text: TextSpan(
         children: words.map((w) {
           final tappable = onWordTap != null &&
-              (w.status == WordStatus.error || w.status == WordStatus.skipped) &&
+              (w.status == WordStatus.error ||
+                  w.status == WordStatus.skipped ||
+                  w.status == WordStatus.minor ||
+                  w.status == WordStatus.accent) &&
               w.tip != null;
           return WidgetSpan(
             child: GestureDetector(

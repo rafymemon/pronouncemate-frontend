@@ -241,9 +241,34 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
         }
         final r = queue.removeAt(0);
         final type = r['type']?.toString() ?? 'correct';
-        w.status = type == 'correct' ? WordStatus.correct : WordStatus.error;
         w.type = type;
-        if (type == 'correct') correct++;
+
+        // Map every backend `type` to its own WordStatus tier instead of
+        // collapsing everything non-'correct' into WordStatus.error.
+        // 'accent' (forgiven Pakistani-accent variant) and 'minor'
+        // (close-but-not-exact acoustic read) were previously both being
+        // shown identically to a hard error — this was hiding both the
+        // accent-tolerance feature's output AND the graded-score work
+        // from the person actually using the app.
+        switch (type) {
+          case 'correct':
+            w.status = WordStatus.correct;
+            break;
+          case 'accent':
+            w.status = WordStatus.accent;
+            break;
+          case 'minor':
+            w.status = WordStatus.minor;
+            break;
+          default:
+            w.status = WordStatus.error;
+        }
+
+        // 'correct' and 'accent' both count toward the on-screen correct
+        // tally — accent variants are, by design, not penalized. 'minor'
+        // does NOT count as correct here, matching pipeline.py's
+        // correct_count, which only includes ('correct', 'accent').
+        if (type == 'correct' || type == 'accent') correct++;
         w.tip = r['explanation']?.toString();
         w.score = (r['per_word_score'] as num?)?.toDouble();
         w.audioPath = r['audio_path']?.toString();
@@ -297,6 +322,13 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
         'score': score,
         'grade': grade,
         'mistake_summary': result['mistake_summary'],
+        // FIX: AnalyzeView already computes and attaches the session's
+        // Focus Script (result['focus_script']) so the "Practice
+        // Mistakes" button opens the exact same script the Dashboard
+        // card shows — but this value was being discarded here instead
+        // of carried through to the summary screen, forcing an extra
+        // getLatestFocusScript() round-trip every time.
+        'focus_script': result['focus_script'],
       };
 
       setState(() {
@@ -331,6 +363,9 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
           sessionTitle: widget.sessionTitle,
           originalSessionId: _sessionId,
           recordingUrl: _recordingUrl,
+          // FIX: thread the Focus Script through so Practice Mistakes
+          // doesn't need a second network call for the common case.
+          focusScript: _sessionStats['focus_script'] as Map<String, dynamic>?,
         ),
       ),
     );
@@ -487,6 +522,34 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
   }
 
   void _showWordTip(DisplayWord w) {
+    final Color chipBg;
+    final Color chipText;
+    final String fallbackTip;
+
+    switch (w.status) {
+      case WordStatus.skipped:
+        chipBg = const Color(0xFFFFF3CD);
+        chipText = const Color(0xFF856404);
+        fallbackTip = 'This word was skipped — try including it next time.';
+        break;
+      case WordStatus.accent:
+        chipBg = const Color(0xFFDCF3F1);
+        chipText = const Color(0xFF1B7A72);
+        fallbackTip =
+            'This is a common regional pronunciation variation — it is not counted as an error.';
+        break;
+      case WordStatus.minor:
+        chipBg = const Color(0xFFFFE9D6);
+        chipText = const Color(0xFFB35900);
+        fallbackTip =
+            "You're very close on this one — just a small pronunciation slip.";
+        break;
+      default:
+        chipBg = Colors.red.shade50;
+        chipText = Colors.red.shade700;
+        fallbackTip = '';
+    }
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
@@ -509,25 +572,18 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
-                  color: w.status == WordStatus.skipped
-                      ? const Color(0xFFFFF3CD)
-                      : Colors.red.shade50,
+                  color: chipBg,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(w.text,
                     style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: w.status == WordStatus.skipped
-                            ? const Color(0xFF856404)
-                            : Colors.red.shade700)),
+                        color: chipText)),
               ),
               const SizedBox(height: 14),
               Text(
-                  w.tip ??
-                      (w.status == WordStatus.skipped
-                          ? 'This word was skipped — try including it next time.'
-                          : ''),
+                  w.tip ?? fallbackTip,
                   style: const TextStyle(
                       fontSize: 15, color: _textGrey, height: 1.55)),
               const SizedBox(height: 20),
