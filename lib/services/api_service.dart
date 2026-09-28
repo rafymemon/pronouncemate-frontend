@@ -4,21 +4,13 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
-import '../config.dart';  // ← ADDED
+import '../config.dart';
 
 class ApiService {
-  // ← ADDED: Use central config
   static String get baseUrl => "${AppConfig.baseUrl}/api";
 
   // ── Token management ───────────────────────────────────
-  // NOTE: Auth (register/login/logout) is handled exclusively by
-  // AuthService (services/auth_service.dart), which owns its own token
-  // storage under the same 'auth_token' key. This class previously had
-  // its own duplicate register()/login()/logout() methods that were
-  // never called anywhere in the app — two parallel, unused auth paths
-  // writing to the same SharedPreferences key was a real footgun
-  // (whichever ran second would silently clobber the other's session).
-  // Removed. Use AuthService.instance for all auth actions.
+  // Auth (register/login/logout) is handled exclusively by AuthService.
   static Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('auth_token');
@@ -52,12 +44,11 @@ class ApiService {
     );
     request.headers['Authorization'] = 'Token $token';
     request.fields['script_text'] = scriptText;
-    
-    // ← ADDED: Send script_id if available
+
     if (scriptId != null && scriptId.isNotEmpty) {
       request.fields['script_id'] = scriptId;
     }
-    
+
     request.files.add(
       await http.MultipartFile.fromPath('audio', audioFile.path),
     );
@@ -65,10 +56,8 @@ class ApiService {
     final response = await http.Response.fromStream(streamedResponse);
     return jsonDecode(response.body);
   }
-  
+
   // ── Session history ─────────────────────────────────────
-  // Pass `days` to restrict to a recent window (e.g. 7) instead of
-  // fetching-then-filtering the user's whole history client-side.
   static Future<List<dynamic>> getSessions({int? days}) async {
     final params = <String, String>{};
     if (days != null) params['days'] = days.toString();
@@ -81,57 +70,55 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
+  static Future<Map<String, dynamic>> getProfile() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/profile/'),
+        headers: await authHeaders,
+      ).timeout(const Duration(seconds: 10));
 
-
-static Future<Map<String, dynamic>> getProfile() async {
-  try {
-    final response = await http.get(
-      Uri.parse('$baseUrl/profile/'),
-      headers: await authHeaders,
-    ).timeout(const Duration(seconds: 10));
-
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return {'error': 'Server error ${response.statusCode}'};
+    } catch (e) {
+      return {'error': e.toString()};
     }
-    return {'error': 'Server error ${response.statusCode}'};
-  } catch (e) {
-    return {'error': e.toString()};
   }
-}
 
-static Future<Map<String, dynamic>> updateProfile(
-    Map<String, dynamic> data) async {
-  try {
-    final response = await http.patch(
-      Uri.parse('$baseUrl/profile/'),
-      headers: await authHeaders,
-      body: jsonEncode(data),
-    ).timeout(const Duration(seconds: 10));
+  static Future<Map<String, dynamic>> updateProfile(
+      Map<String, dynamic> data) async {
+    try {
+      final response = await http.patch(
+        Uri.parse('$baseUrl/profile/'),
+        headers: await authHeaders,
+        body: jsonEncode(data),
+      ).timeout(const Duration(seconds: 10));
 
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return {'error': 'Update failed ${response.statusCode}'};
+    } catch (e) {
+      return {'error': e.toString()};
     }
-    return {'error': 'Update failed ${response.statusCode}'};
-  } catch (e) {
-    return {'error': e.toString()};
   }
-}
 
-static Future<Map<String, dynamic>> clearSessionHistory() async {
-  try {
-    final response = await http.delete(
-      Uri.parse('$baseUrl/profile/'),
-      headers: await authHeaders,
-    ).timeout(const Duration(seconds: 10));
+  static Future<Map<String, dynamic>> clearSessionHistory() async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/profile/'),
+        headers: await authHeaders,
+      ).timeout(const Duration(seconds: 10));
 
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return {'error': 'Failed ${response.statusCode}'};
+    } catch (e) {
+      return {'error': e.toString()};
     }
-    return {'error': 'Failed ${response.statusCode}'};
-  } catch (e) {
-    return {'error': e.toString()};
   }
-}
 
   // ── Scripts ─────────────────────────────────────────────
   static Future<Map<String, dynamic>> getScripts({
@@ -167,12 +154,6 @@ static Future<Map<String, dynamic>> clearSessionHistory() async {
     }
   }
 
-  // ── Smart Rotation ──────────────────────────────────────
-  // Returns a smart-rotated set of scripts for the current user:
-  // scripts they haven't practiced yet first, then their oldest-practiced
-  // scripts once the unpracticed pool for that mode/level is exhausted.
-  // Pass mode/level null to rotate across the whole builtin library
-  // (used for the home screen's "Today's Picks").
   static Future<Map<String, dynamic>> getRotatedScripts({
     String? mode,
     String? level,
@@ -205,16 +186,20 @@ static Future<Map<String, dynamic>> clearSessionHistory() async {
     }
   }
 
+  // FIX: `level` is now optional. When omitted, the backend auto-assigns
+  // difficulty from the script's word count instead of always defaulting
+  // to 'intermediate'. Used by the "type or paste text" upload dialog,
+  // which no longer shows a manual difficulty picker.
   static Future<Map<String, dynamic>> uploadScriptText({
     required String title,
     required String content,
-    String level = 'intermediate',
+    String? level,
     String? mode,
   }) async {
     final body = {
       'title': title,
       'content': content,
-      'level': level,
+      if (level != null) 'level': level,
       if (mode != null) 'mode': mode,
     };
 
@@ -248,12 +233,6 @@ static Future<Map<String, dynamic>> clearSessionHistory() async {
     return jsonDecode(response.body);
   }
 
-  // ── Generate with AI ─────────────────────────────────────
-  // Generates a single custom script from a user-supplied topic + word
-  // limit via Gemini. The returned script is already saved server-side
-  // (is_builtin=False, owned by the current user), in the same shape as
-  // uploadScriptText/uploadScriptFile — safe to drop straight into
-  // _startScript() or append to the "My Scripts" list.
   static Future<Map<String, dynamic>> generateAiScript({
     required String topic,
     required int wordLimit,
@@ -318,9 +297,6 @@ static Future<Map<String, dynamic>> clearSessionHistory() async {
       return {'error': e.toString()};
     }
   }
-
-
-
 
   // ── Improvement Phase ───────────────────────────────────
   static Future<Map<String, dynamic>> getProgressionStatus() async {
@@ -415,7 +391,7 @@ static Future<Map<String, dynamic>> clearSessionHistory() async {
     }
   }
 
-    static Future<Map<String, dynamic>> getFocusScriptHistory() async {
+  static Future<Map<String, dynamic>> getFocusScriptHistory() async {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/focus-scripts/'),
@@ -440,6 +416,39 @@ static Future<Map<String, dynamic>> clearSessionHistory() async {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/focus-scripts/stats/'),
+        headers: await authHeaders,
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return {'error': 'Server error ${response.statusCode}'};
+    } catch (e) {
+      return {'error': e.toString()};
+    }
+  }
+
+  // ── Notifications ────────────────────────────────────────
+  static Future<Map<String, dynamic>> getNotifications() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/notifications/'),
+        headers: await authHeaders,
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return {'notifications': [], 'unread_count': 0, 'error': 'Server error ${response.statusCode}'};
+    } catch (e) {
+      return {'notifications': [], 'unread_count': 0, 'error': e.toString()};
+    }
+  }
+
+  static Future<Map<String, dynamic>> markNotificationsRead() async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/notifications/read/'),
         headers: await authHeaders,
       ).timeout(const Duration(seconds: 10));
 

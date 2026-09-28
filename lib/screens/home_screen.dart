@@ -9,6 +9,7 @@ import '../widgets/common_widgets.dart';
 import 'active_session_screen.dart';
 import 'dashboard_screen.dart';
 import 'login_screen.dart';
+import 'notifications_screen.dart';
 import 'profile_screen.dart';
 import 'progress_analytics_screen.dart';
 import 'script_selection_screen.dart' show ProficiencyLevel, ScriptMode;
@@ -30,6 +31,18 @@ class HomeScreenState extends State<HomeScreen> {
   bool _loadingPicks = true;
   String? _picksError;
 
+  // ── Notifications badge ────────────────────────────────
+  int _unreadNotifications = 0;
+
+  static const List<String> _hookLines = [
+    "Every sentence you practice today is a step closer to sounding confident.",
+    "Small daily reps build big pronunciation wins — let's go.",
+    "Your voice, sharper every session. Pick a script and start.",
+  ];
+
+  String get _hookLine =>
+      _hookLines[DateTime.now().day % _hookLines.length];
+
   @override
   void initState() {
     super.initState();
@@ -38,6 +51,7 @@ class HomeScreenState extends State<HomeScreen> {
     UserProgressService.instance.addListener(_onProgressChanged);
     _loadSummary();
     _loadTodaysPicks();
+    _loadNotificationsBadge();
   }
 
   @override
@@ -88,7 +102,6 @@ class HomeScreenState extends State<HomeScreen> {
     UserProgressService.cache(summary);
   }
 
-  // ── Smart Rotation: fetch Today's Picks ────────────────
   Future<void> _loadTodaysPicks() async {
     if (mounted) {
       setState(() {
@@ -115,6 +128,24 @@ class HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _loadNotificationsBadge() async {
+    final result = await ApiService.getNotifications();
+    if (!mounted) return;
+    setState(() {
+      _unreadNotifications = (result['unread_count'] as num?)?.toInt() ?? 0;
+    });
+  }
+
+  Future<void> _openNotifications() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+    );
+    // The notifications screen marks everything read as soon as it loads
+    // its list, so once we're back the badge should clear.
+    if (mounted) setState(() => _unreadNotifications = 0);
+  }
+
   void _openScript(Map<String, dynamic> script) {
     Navigator.push(
       context,
@@ -126,8 +157,6 @@ class HomeScreenState extends State<HomeScreen> {
         ),
       ),
     ).then((_) {
-      // Refresh picks when the user comes back — the script they just
-      // practiced should no longer show as "unpracticed" next time.
       _loadTodaysPicks();
     });
   }
@@ -146,6 +175,7 @@ class HomeScreenState extends State<HomeScreen> {
   Future<void> _refresh() async {
     await reload();
     await _loadTodaysPicks();
+    await _loadNotificationsBadge();
   }
 
   void _onProgressChanged() {
@@ -266,21 +296,49 @@ class HomeScreenState extends State<HomeScreen> {
                             ],
                           ),
                         ),
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: AppColors.surface,
-                            borderRadius: BorderRadius.circular(13),
-                            boxShadow: const [
-                              BoxShadow(
-                                  color: AppColors.cardShadow,
-                                  blurRadius: 8,
-                                  offset: Offset(0, 2))
-                            ],
+                        // FIX: bell icon now navigates to a real
+                        // notification feed and shows an unread badge,
+                        // instead of being a static decoration.
+                        GestureDetector(
+                          onTap: _openNotifications,
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: AppColors.surface,
+                              borderRadius: BorderRadius.circular(13),
+                              boxShadow: const [
+                                BoxShadow(
+                                    color: AppColors.cardShadow,
+                                    blurRadius: 8,
+                                    offset: Offset(0, 2))
+                              ],
+                            ),
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                const Center(
+                                  child: Icon(Icons.notifications_outlined,
+                                      color: AppColors.textPrimary, size: 22),
+                                ),
+                                if (_unreadNotifications > 0)
+                                  Positioned(
+                                    right: 6,
+                                    top: 6,
+                                    child: Container(
+                                      width: 9,
+                                      height: 9,
+                                      decoration: BoxDecoration(
+                                        color: AppColors.error,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                            color: AppColors.surface, width: 1.5),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
-                          child: const Icon(Icons.notifications_outlined,
-                              color: AppColors.textPrimary, size: 22),
                         ),
                       ],
                     ),
@@ -291,10 +349,6 @@ class HomeScreenState extends State<HomeScreen> {
                         padding: EdgeInsets.only(bottom: 16),
                         child: LinearProgressIndicator(minHeight: 2),
                       ),
-
-                    // ── AI Speaker Hero ───────────────────────────────
-                    const _SpeakerHero(),
-                    const SizedBox(height: 24),
 
                     // ── Today's Goal Banner ──────────────────────────
                     Container(
@@ -362,7 +416,20 @@ class HomeScreenState extends State<HomeScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 24),
+
+                    // FIX: pronunciation banner removed. A short hook line
+                    // sits directly above Today's Picks instead.
+                    Text(
+                      _hookLine,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
 
                     // ── Today's Picks (Smart Rotation) ────────────────
                     _TodaysPicksSection(
@@ -374,7 +441,7 @@ class HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 28),
 
-                    // ── Weekly Activity Heatmap (moved from Dashboard) ─
+                    // ── Weekly Activity Heatmap ───────────────────────
                     _WeeklyActivityCard(data: summary.weeklyAccuracy),
                     const SizedBox(height: 28),
 
@@ -386,7 +453,8 @@ class HomeScreenState extends State<HomeScreen> {
                             title: 'Your Progress',
                             subtitle: 'Last 7 days',
                           ),
-                        ),                        TextButton(
+                        ),
+                        TextButton(
                           onPressed: _openDetailedAnalytics,
                           style: TextButton.styleFrom(
                             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -431,7 +499,7 @@ class HomeScreenState extends State<HomeScreen> {
                           icon: Icons.track_changes_rounded,
                           color: AppColors.success,
                         ),
-                                                StatCard(
+                        StatCard(
                           label: 'Words Practiced',
                           value: summary.wordsPracticed == null
                               ? '—'
@@ -449,30 +517,8 @@ class HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 28),
 
-                    // ── Recent Sessions (last 7 days) ────────────────
-                    const SectionHeader(
-                      title: 'Recent Sessions',
-                      subtitle: 'From the last 7 days',
-                    ),
-                    const SizedBox(height: 14),
-                    if (summary.recentSessions.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 12),
-                        child: Text(
-                          'No sessions in the last 7 days. Start a practice run to see your history here.',
-                          style: TextStyle(color: AppColors.textSecondary),
-                        ),
-                      )
-                    else
-                      ...summary.recentSessions.map(
-                        (session) => _RecentSession(
-                          title: session.title,
-                          date: session.dateLabel,
-                          score: session.score.round(),
-                          duration: session.durationLabel ?? '—',
-                          grade: session.grade,
-                        ),
-                      ),
+                    // ── Recent Sessions (now expandable, 5 → all) ─────
+                    _RecentSessionsCard(recentSessions: summary.recentSessions),
                     const SizedBox(height: 20),
                   ],
                 ),
@@ -485,9 +531,169 @@ class HomeScreenState extends State<HomeScreen> {
   }
 }
 
+// ── Recent Sessions — shows 5, "View All" fetches the full history ──
+class _RecentSessionsCard extends StatefulWidget {
+  final List<SessionSnapshot> recentSessions;
+  const _RecentSessionsCard({required this.recentSessions});
+
+  @override
+  State<_RecentSessionsCard> createState() => _RecentSessionsCardState();
+}
+
+class _RecentSessionsCardState extends State<_RecentSessionsCard> {
+  bool _expanded = false;
+  bool _loadingAll = false;
+  List<Map<String, dynamic>>? _allSessions;
+
+  Future<void> _toggleExpand() async {
+    if (_expanded) {
+      setState(() => _expanded = false);
+      return;
+    }
+
+    setState(() {
+      _expanded = true;
+      _loadingAll = true;
+    });
+
+    final raw = await ApiService.getSessions();
+    if (!mounted) return;
+    setState(() {
+      _loadingAll = false;
+      _allSessions = raw.whereType<Map>().map((e) =>
+          e.map((k, v) => MapEntry(k.toString(), v))).toList();
+    });
+  }
+
+  String _dateLabel(DateTime? dt) {
+    if (dt == null) return 'Recently';
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inDays == 0) return 'Today';
+    if (diff.inDays == 1) return 'Yesterday';
+    if (diff.inDays < 7) {
+      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      return days[dt.weekday - 1];
+    }
+    return '${dt.month}/${dt.day}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(color: AppColors.cardShadow, blurRadius: 8, offset: Offset(0, 3)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: SectionHeader(
+                  title: 'Recent Sessions',
+                  subtitle: 'From the last 7 days',
+                ),
+              ),
+              TextButton(
+                onPressed: _toggleExpand,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(_expanded ? 'Show Less' : 'View All',
+                        style: const TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600)),
+                    Icon(
+                      _expanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      color: AppColors.primary,
+                      size: 18,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (!_expanded) ..._buildRecentFive(),
+          if (_expanded) ..._buildExpanded(),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildRecentFive() {
+    final list = widget.recentSessions.take(5).toList();
+    if (list.isEmpty) {
+      return const [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 12),
+          child: Text(
+            'No sessions in the last 7 days. Start a practice run to see your history here.',
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
+        ),
+      ];
+    }
+    return list
+        .map((session) => _RecentSession(
+              title: session.title,
+              date: session.dateLabel,
+              score: session.score.round(),
+              duration: session.durationLabel ?? '—',
+              grade: session.grade,
+            ))
+        .toList();
+  }
+
+  List<Widget> _buildExpanded() {
+    if (_loadingAll) {
+      return const [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 20),
+          child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+        ),
+      ];
+    }
+    final all = _allSessions ?? [];
+    if (all.isEmpty) {
+      return const [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 12),
+          child: Text('No session history yet.',
+              style: TextStyle(color: AppColors.textSecondary)),
+        ),
+      ];
+    }
+    return all.map((s) {
+      final score = (s['accuracy'] as num?)?.toDouble() ?? 0.0;
+      final grade = s['grade']?.toString() ?? '—';
+      final dt = DateTime.tryParse(s['created_at']?.toString() ?? '');
+      return _RecentSession(
+        title: 'Session',
+        date: _dateLabel(dt),
+        score: score.round(),
+        duration: '—',
+        grade: grade,
+      );
+    }).toList();
+  }
+}
+
 // ── Weekly Activity Heatmap ─────────────────────────────────────────
-// Shows the last 7 calendar days with each day's real average accuracy,
-// computed live from the user's sessions (see UserProgressService).
 class _WeeklyActivityCard extends StatelessWidget {
   final List<DayAccuracy> data;
   const _WeeklyActivityCard({required this.data});
@@ -828,7 +1034,6 @@ class _AppDrawer extends StatelessWidget {
       child: SafeArea(
         child: Column(
           children: [
-            // Drawer header with gradient
             Container(
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(24, 28, 24, 28),
@@ -875,7 +1080,6 @@ class _AppDrawer extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            // Navigation items
             _DrawerItem(
               icon: Icons.bar_chart_rounded,
               label: 'Dashboard',
@@ -916,7 +1120,6 @@ class _AppDrawer extends StatelessWidget {
               },
             ),
             const Spacer(),
-            // Logout button
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: GestureDetector(
@@ -979,226 +1182,6 @@ class _DrawerItem extends StatelessWidget {
   }
 }
 
-// ── AI Speaker Hero ───────────────────────────────────────────────
-class _SpeakerHero extends StatelessWidget {
-  const _SpeakerHero();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      // Replaced fixed height with BoxConstraints to prevent vertical micro-overflows
-      constraints: const BoxConstraints(minHeight: 195), 
-      width: double.infinity,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1A6B7A), Color(0xFF2E9BAB), Color(0xFF5BBDCC)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.accent.withValues(alpha: 0.45),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Stack(
-        clipBehavior: Clip.hardEdge,
-        children: [
-          Positioned(
-            right: -35,
-            top: -35,
-            child: Container(
-              width: 190,
-              height: 190,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.08), width: 2),
-              ),
-            ),
-          ),
-          Positioned(
-            right: 8,
-            top: 8,
-            child: Container(
-              width: 125,
-              height: 125,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.1), width: 2),
-              ),
-            ),
-          ),
-          Positioned(
-            right: 38,
-            top: 38,
-            child: Container(
-              width: 65,
-              height: 65,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.07),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-          Positioned(
-            left: -25,
-            bottom: -25,
-            child: Container(
-              width: 110,
-              height: 110,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.07), width: 2),
-              ),
-            ),
-          ),
-          const Padding(
-            padding: EdgeInsets.all(22),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                _SpeakerIllustration(),
-                SizedBox(width: 20),
-                Expanded(child: _SpeakerCopy()),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SpeakerIllustration extends StatelessWidget {
-  const _SpeakerIllustration();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            Container(
-              width: 88,
-              height: 88,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-            ),
-            Container(
-              width: 66,
-              height: 66,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
-              ),
-            ),
-            const Icon(Icons.record_voice_over_rounded,
-                color: Colors.white, size: 34),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [8.0, 18.0, 30.0, 22.0, 12.0, 26.0, 14.0]
-              .map((h) => Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 2),
-                    child: Container(
-                      width: 5,
-                      height: h,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.75),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                  ))
-              .toList(),
-        ),
-      ],
-    );
-  }
-}
-
-class _SpeakerCopy extends StatelessWidget {
-  const _SpeakerCopy();
-
-  @override
-  Widget build(BuildContext context) {
-    // Wrapped in SingleChildScrollView to completely fix the 80-pixel overflow!
-    return const SingleChildScrollView(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min, // Ensures it only takes the space it needs
-        children: [
-          Text(
-            'AI Pronunciation\nCoach',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              height: 1.3,
-            ),
-          ),
-          SizedBox(height: 8),
-          Text(
-            'Real-time feedback on your English pronunciation, powered by advanced AI models.',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 12,
-              height: 1.5,
-            ),
-          ),
-          SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _HeroPill('Real-time'),
-              _HeroPill('Accurate'),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeroPill extends StatelessWidget {
-  final String label;
-  const _HeroPill(this.label);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
-      ),
-      child: Text(label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-          )),
-    );
-  }
-}
-
 // ── Recent Session Row ───────────────────────────────────────────
 class _RecentSession extends StatelessWidget {
   final String title;
@@ -1227,17 +1210,12 @@ class _RecentSession extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.surfaceVariant,
         borderRadius: BorderRadius.circular(14),
-        boxShadow: const [
-          BoxShadow(
-              color: AppColors.cardShadow, blurRadius: 8, offset: Offset(0, 3)),
-        ],
       ),
       child: Row(
         children: [
           Container(
-            // Replaced fixed height/width with BoxConstraints to fix 5.7px micro-overflows
             constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
             padding: const EdgeInsets.symmetric(horizontal: 4),
             decoration: BoxDecoration(

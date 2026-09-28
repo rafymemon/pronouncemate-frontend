@@ -21,6 +21,12 @@ class AppColors {
   static const Color accent = Color(0xFF4AABBA); // teal accent
   static const Color accentLight = Color(0xFF7ECAD5);
 
+  // NEW: alias for the closest existing "sky blue" tone in this palette
+  // (accent). Named separately so screens asking specifically for a
+  // "sky blue" header read clearly at the call site, without introducing
+  // a genuinely new color into the app.
+  static const Color skyBlue = accent;
+
   // Text
   static const Color textPrimary = Color(0xFF1A2A2A); // near black
   static const Color textSecondary = Color(0xFF4A6568); // muted teal-gray
@@ -56,7 +62,6 @@ class AppTheme {
       ),
       scaffoldBackgroundColor: AppColors.background,
 
-      // AppBar — transparent over the cyan bg
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.background,
         foregroundColor: AppColors.textPrimary,
@@ -71,7 +76,6 @@ class AppTheme {
         iconTheme: IconThemeData(color: AppColors.textPrimary),
       ),
 
-      // Primary buttons — olive pill shape (matches Figma)
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
@@ -80,7 +84,7 @@ class AppTheme {
           shadowColor: AppColors.primary.withValues(alpha: 0.4),
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 32),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(30), // pill shape
+            borderRadius: BorderRadius.circular(30),
           ),
           textStyle: const TextStyle(
             fontSize: 16,
@@ -105,7 +109,6 @@ class AppTheme {
         ),
       ),
 
-      // Inputs — white with light cyan border
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.surface,

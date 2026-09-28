@@ -7,7 +7,7 @@ import 'active_session_screen.dart';
 import 'focus_script_history_screen.dart';
 
 // ═══════════════════════════════════════════════════════
-// TOP-LEVEL HELPERS (shared across widgets in this file)
+// TOP-LEVEL HELPERS
 // ═══════════════════════════════════════════════════════
 
 Color _modeColorFor(String? mode) {
@@ -36,16 +36,23 @@ IconData _modeIconFor(String? mode) {
   }
 }
 
+// FIX: recolored to the app's theme tiers instead of arbitrary hex —
+// used for both Recent Sessions (item 7) and anywhere else an accuracy
+// value needs a color (item 5).
 Color _scoreColorFor(dynamic score) {
   final s = (score as num?)?.toDouble() ?? 0;
-  if (s >= 80) return const Color(0xFF16A34A);
-  if (s >= 60) return const Color(0xFF2563EB);
-  if (s >= 40) return const Color(0xFFF59E0B);
-  return const Color(0xFFEF4444);
+  if (s >= 80) return AppColors.success;
+  if (s >= 60) return AppColors.accent;
+  if (s >= 40) return AppColors.warning;
+  return AppColors.error;
 }
 
-/// Lays out a card title + trailing control(s) responsively.
-/// Falls back to a stacked layout on narrow widths instead of overflowing.
+const Map<String, String> _levelDisplayLabels = {
+  'beginner': 'Beginner',
+  'intermediate': 'Intermediate',
+  'expert': 'Expert',
+};
+
 class _ResponsiveCardHeader extends StatelessWidget {
   final Widget title;
   final Widget trailing;
@@ -59,11 +66,11 @@ class _ResponsiveCardHeader extends StatelessWidget {
       builder: (context, constraints) {
         if (constraints.maxWidth < breakpoint) {
           return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               title,
               const SizedBox(height: 10),
-              Align(alignment: Alignment.centerLeft, child: trailing),
+              trailing,
             ],
           );
         }
@@ -92,7 +99,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool _loading = true;
   String? _error;
 
-  // Data
   String _userName = '';
   int _streakDays = 0;
   int _totalSessions = 0;
@@ -103,14 +109,13 @@ class _DashboardScreenState extends State<DashboardScreen>
   List<Map<String, dynamic>> _focusWords = [];
   Map<String, double> _modeScores = {};
 
-  // ── Improvement Phase data ─────────────────────────
   Map<String, dynamic>? _progression;
   Map<String, dynamic>? _focusScript;
-  // FIX: was never fetched or passed to _FocusWordsSection, so the
-  // "X/3 to mastery" streak line the widget already supports never
-  // rendered even though GET /api/mastery/ works fine.
   Map<String, Map<String, dynamic>> _masteryByWord = {};
-  // Animation controllers
+  // FIX: real proficiency level from the backend, replacing the fake
+  // "Lvl X" badge that was derived from a session-count formula.
+  String _proficiencyLevel = 'beginner';
+
   late AnimationController _headerAnim;
   late AnimationController _streakPulse;
 
@@ -171,14 +176,12 @@ class _DashboardScreenState extends State<DashboardScreen>
     _loadImprovementData();
   }
 
-  // Fetched separately and non-blocking — a failure here shouldn't
-  // prevent the core dashboard (which already loaded above) from showing.
   Future<void> _loadImprovementData() async {
     final results = await Future.wait([
       ApiService.getProgressionStatus(),
       ApiService.getLatestFocusScript(),
-      // FIX: added so Focus Words can show each word's mastery streak.
       ApiService.getWordMastery(),
+      ApiService.getProfile(),
     ]);
 
     if (!mounted) return;
@@ -186,6 +189,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     final progressionData = results[0];
     final focusScriptData = results[1];
     final masteryData = results[2];
+    final profileData = results[3];
 
     final masteryList =
         List<Map<String, dynamic>>.from(masteryData['words'] ?? []);
@@ -199,20 +203,32 @@ class _DashboardScreenState extends State<DashboardScreen>
       _progression = progressionData['error'] == null ? progressionData : null;
       _focusScript = focusScriptData['focus_script'] as Map<String, dynamic>?;
       _masteryByWord = masteryMap;
+      _proficiencyLevel =
+          profileData['proficiency_level']?.toString() ?? 'beginner';
     });
   }
 
   void _startFocusScript() {
     if (_focusScript == null) return;
+    // FIX: previously started the Focus Script without focusScriptId /
+    // focusScriptWords, so ActiveSessionScreen never called
+    // completeFocusScript() after practicing it — the Focus Script stayed
+    // "pending" forever and Focus Script History showed the wrong
+    // completed state. Passing both here is what lets the completion
+    // round-trip actually happen.
+    final id = (_focusScript!['id'] as num?)?.toInt();
+    final words = List<String>.from(_focusScript!['source_words'] ?? []);
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ActiveSessionScreen(
           scriptText: _focusScript!['script_text'] as String,
           sessionTitle: 'Focus Script',
+          focusScriptId: id,
+          focusScriptWords: words,
         ),
       ),
-    ).then((_) => _loadData()); // refresh in case a new one was generated
+    ).then((_) => _loadData());
   }
 
   String get _greeting {
@@ -320,7 +336,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   // ═══════════════════════════════════════════════════════
-  // HEADER — Animated greeting with streak badge
+  // HEADER — now the app's own olive theme, not an unrelated blue
   // ═══════════════════════════════════════════════════════
 
   Widget _buildHeader() {
@@ -328,14 +344,14 @@ class _DashboardScreenState extends State<DashboardScreen>
       padding: const EdgeInsets.fromLTRB(20, 60, 20, 28),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF1E3A8A), Color(0xFF2563EB), Color(0xFF3B82F6)],
+          colors: [AppColors.primaryDark, AppColors.primary, AppColors.primaryLight],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(32)),
         boxShadow: [
           BoxShadow(
-              color: const Color(0xFF2563EB).withValues(alpha: 0.35),
+              color: AppColors.primary.withValues(alpha: 0.35),
               blurRadius: 24,
               offset: const Offset(0, 10)),
         ],
@@ -433,10 +449,12 @@ class _DashboardScreenState extends State<DashboardScreen>
                 children: [
                   _headerChip(Icons.emoji_events_rounded,
                       'Best ${_bestScore.toStringAsFixed(0)}%', Colors.amber),
+                  // FIX: real proficiency level instead of a fake
+                  // session-count-derived number.
                   _headerChip(
                       Icons.star_rounded,
-                      'Lvl ${_levelFromSessions(_totalSessions)}',
-                      const Color(0xFFA78BFA)),
+                      _levelDisplayLabels[_proficiencyLevel] ?? 'Beginner',
+                      AppColors.accentLight),
                 ],
               ),
             ],
@@ -469,10 +487,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  int _levelFromSessions(int sessions) => (sessions / 5).ceil().clamp(1, 99);
-
   // ═══════════════════════════════════════════════════════
-  // QUICK STATS — Horizontal glassmorphic carousel
+  // QUICK STATS — recolored to the app's theme palette
   // ═══════════════════════════════════════════════════════
 
   Widget _buildQuickStatsCarousel() {
@@ -480,11 +496,11 @@ class _DashboardScreenState extends State<DashboardScreen>
       _StatItem('$_totalSessions', 'Sessions', Icons.play_circle_filled_rounded,
           AppColors.primary),
       _StatItem('${_quickStats['words'] ?? 0}', 'Words',
-          Icons.text_fields_rounded, const Color(0xFF16A34A)),
+          Icons.text_fields_rounded, AppColors.accent),
       _StatItem('${_quickStats['errors_corrected'] ?? 0}', 'Fixed',
-          Icons.check_circle_rounded, const Color(0xFF7C3AED)),
+          Icons.check_circle_rounded, AppColors.success),
       _StatItem(_formatMinutes(_quickStats['minutes'] ?? 0), 'Time',
-          Icons.timer_rounded, const Color(0xFF2563EB)),
+          Icons.timer_rounded, AppColors.brandBlue),
     ];
 
     return SizedBox(
@@ -545,6 +561,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   const SizedBox(height: 10),
                   Text(
                     s.value,
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
@@ -555,6 +572,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   const SizedBox(height: 2),
                   Text(
                     s.label,
+                    textAlign: TextAlign.center,
                     style: const TextStyle(
                         fontSize: 11,
                         color: Color(0xFF64748B),
@@ -598,17 +616,15 @@ class _DashboardScreenState extends State<DashboardScreen>
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: isPositive
-                ? [const Color(0xFF059669), const Color(0xFF10B981)]
-                : [const Color(0xFFDC2626), const Color(0xFFEF4444)],
+                ? [AppColors.success, AppColors.success.withValues(alpha: 0.75)]
+                : [AppColors.error, AppColors.error.withValues(alpha: 0.75)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: (isPositive
-                      ? const Color(0xFF10B981)
-                      : const Color(0xFFEF4444))
+              color: (isPositive ? AppColors.success : AppColors.error)
                   .withValues(alpha: 0.25),
               blurRadius: 16,
               offset: const Offset(0, 6),
@@ -754,7 +770,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   // ═══════════════════════════════════════════════════════
-  // FAB — Glassmorphic practice button
+  // FAB
   // ═══════════════════════════════════════════════════════
 
   Widget _buildFAB() {
@@ -781,10 +797,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  // ═══════════════════════════════════════════════════════
-  // HELPERS
-  // ═══════════════════════════════════════════════════════
-
   String _formatMinutes(int mins) {
     if (mins < 60) return '${mins}m';
     return '${(mins / 60).toStringAsFixed(1)}h';
@@ -792,7 +804,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 }
 
 // ═══════════════════════════════════════════════════════
-// MODE PERFORMANCE — Dropdown-driven animated gauge
+// MODE PERFORMANCE — content now centered
 // ═══════════════════════════════════════════════════════
 
 class _ModePerformanceCard extends StatefulWidget {
@@ -843,10 +855,11 @@ class _ModePerformanceCardState extends State<_ModePerformanceCard> {
       ),
       padding: const EdgeInsets.all(18),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           _ResponsiveCardHeader(
             title: const Text('Mode Performance',
+                textAlign: TextAlign.center,
                 style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
@@ -902,62 +915,40 @@ class _ModePerformanceCardState extends State<_ModePerformanceCard> {
                 child: child,
               ),
             ),
-            child: LayoutBuilder(
+            child: Column(
               key: ValueKey(_selectedKey),
-              builder: (context, constraints) {
-                final gauge = _DashboardGauge(value: score, color: meta.color);
-                final details = Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                          color: meta.color.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8)),
-                      child: Text(meta.label,
-                          style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: meta.color)),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(_rankLabel(score),
-                        style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey.shade500,
-                            fontWeight: FontWeight.w500)),
-                    const SizedBox(height: 6),
-                    Text(
-                      score >= 70
-                          ? 'You are performing well in this mode.'
-                          : 'Focus on this area to boost your overall score.',
-                      style:
-                          TextStyle(fontSize: 11, color: Colors.grey.shade400),
-                    ),
-                  ],
-                );
-
-                if (constraints.maxWidth < 320) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Center(child: gauge),
-                      const SizedBox(height: 16),
-                      details,
-                    ],
-                  );
-                }
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    gauge,
-                    const SizedBox(width: 20),
-                    Expanded(child: details),
-                  ],
-                );
-              },
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _DashboardGauge(value: score, color: meta.color),
+                const SizedBox(height: 14),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                      color: meta.color.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8)),
+                  child: Text(meta.label,
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: meta.color)),
+                ),
+                const SizedBox(height: 10),
+                Text(_rankLabel(score),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade500,
+                        fontWeight: FontWeight.w500)),
+                const SizedBox(height: 6),
+                Text(
+                  score >= 70
+                      ? 'You are performing well in this mode.'
+                      : 'Focus on this area to boost your overall score.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+                ),
+              ],
             ),
           ),
         ],
@@ -1026,7 +1017,7 @@ class _DashboardGauge extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════
-// FOCUS WORDS — Sortable, responsive deck
+// FOCUS WORDS
 // ═══════════════════════════════════════════════════════
 
 class _FocusWordsSection extends StatefulWidget {
@@ -1051,7 +1042,6 @@ class _FocusWordsSectionState extends State<_FocusWordsSection> {
             .compareTo((b['word'] ?? '').toString().toLowerCase()));
         break;
       case 'Recent':
-        // API returns focus words newest-first by default; leave order untouched.
         break;
       case 'Frequency':
       default:
@@ -1188,13 +1178,13 @@ class _FocusWordsSectionState extends State<_FocusWordsSection> {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(Icons.trending_up_rounded,
-                                      size: 12, color: const Color(0xFF16A34A)),
+                                      size: 12, color: AppColors.success),
                                   const SizedBox(width: 3),
                                   Text(
                                     '$streak/3 to mastery',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         fontSize: 10,
-                                        color: Color(0xFF16A34A),
+                                        color: AppColors.success,
                                         fontWeight: FontWeight.w600),
                                   ),
                                 ],
@@ -1262,7 +1252,7 @@ class _FocusSortDropdownState extends State<_FocusSortDropdown> {
 }
 
 // ═══════════════════════════════════════════════════════
-// RECENT SESSIONS — Compact filterable card list
+// RECENT SESSIONS
 // ═══════════════════════════════════════════════════════
 
 class _RecentSessionsSection extends StatefulWidget {
@@ -1500,7 +1490,7 @@ class _ModeDisplay {
 }
 
 // ═══════════════════════════════════════════════════════
-// PROGRESSION PANEL — "X / 5 criteria met" transparency card
+// PROGRESSION PANEL
 // ═══════════════════════════════════════════════════════
 
 class _ProgressionPanel extends StatelessWidget {
@@ -1513,12 +1503,6 @@ class _ProgressionPanel extends StatelessWidget {
     'error_rate': 'Error rate',
     'mastery': 'Word mastery',
     'phoneme': 'Accent accuracy',
-  };
-
-  static const _levelLabels = {
-    'beginner': 'Beginner',
-    'intermediate': 'Intermediate',
-    'expert': 'Expert',
   };
 
   @override
@@ -1537,7 +1521,7 @@ class _ProgressionPanel extends StatelessWidget {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: eligible ? const Color(0xFF16A34A) : AppColors.divider,
+          color: eligible ? AppColors.success : AppColors.divider,
           width: eligible ? 1.5 : 1,
         ),
         boxShadow: [
@@ -1561,7 +1545,7 @@ class _ProgressionPanel extends StatelessWidget {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  _levelLabels[level] ?? level,
+                  _levelDisplayLabels[level] ?? level,
                   style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -1574,19 +1558,19 @@ class _ProgressionPanel extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFDCFCE7),
+                    color: AppColors.successLight,
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.trending_up_rounded,
-                          size: 13, color: Color(0xFF16A34A)),
-                      SizedBox(width: 4),
+                          size: 13, color: AppColors.success),
+                      const SizedBox(width: 4),
                       Text('Ready to level up!',
                           style: TextStyle(
                               fontSize: 11,
-                              color: Color(0xFF16A34A),
+                              color: AppColors.success,
                               fontWeight: FontWeight.w700)),
                     ],
                   ),
@@ -1618,8 +1602,7 @@ class _ProgressionPanel extends StatelessWidget {
                         ? Icons.check_circle_rounded
                         : Icons.radio_button_unchecked_rounded,
                     size: 18,
-                    color:
-                        passed ? const Color(0xFF16A34A) : AppColors.textHint,
+                    color: passed ? AppColors.success : AppColors.textHint,
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -1638,8 +1621,7 @@ class _ProgressionPanel extends StatelessWidget {
                     '$current / $required',
                     style: TextStyle(
                       fontSize: 12,
-                      color:
-                          passed ? const Color(0xFF16A34A) : AppColors.textHint,
+                      color: passed ? AppColors.success : AppColors.textHint,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -1654,7 +1636,7 @@ class _ProgressionPanel extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════
-// FOCUS SCRIPT CARD — Suggested remediation practice
+// FOCUS SCRIPT CARD
 // ═══════════════════════════════════════════════════════
 
 class _FocusScriptCard extends StatelessWidget {

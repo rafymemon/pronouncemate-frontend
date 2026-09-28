@@ -12,8 +12,6 @@ import 'package:share_plus/share_plus.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 
-/// Lays out a card title + trailing control(s) responsively.
-/// Falls back to a stacked layout on narrow widths instead of overflowing.
 class _ResponsiveCardHeader extends StatelessWidget {
   final Widget title;
   final Widget trailing;
@@ -26,11 +24,11 @@ class _ResponsiveCardHeader extends StatelessWidget {
       builder: (context, constraints) {
         if (constraints.maxWidth < breakpoint) {
           return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               title,
               const SizedBox(height: 10),
-              Align(alignment: Alignment.centerLeft, child: trailing),
+              trailing,
             ],
           );
         }
@@ -59,16 +57,18 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
   String? _error;
   bool _exporting = false;
 
-  // Used to capture the analytics content as an image for "Share as Image".
   final GlobalKey _shareBoundaryKey = GlobalKey();
 
-  // Data
   List<SessionData> _sessions = [];
   List<WordError> _topErrors = [];
   ErrorBreakdown _errorBreakdown = ErrorBreakdown.empty();
   Map<String, double> _modeScores = {};
   ImprovementStats _improvement = ImprovementStats(firstAvg: 0, lastAvg: 0, percentageChange: 0);
   TotalStats _totalStats = TotalStats(sessions: 0, words: 0, errors: 0, minutes: 0);
+
+  // FIX: replaces the Mode Score card (now shown only on Dashboard, to
+  // avoid duplicating the same gauge on two screens).
+  Map<String, dynamic>? _progression;
 
   @override
   void initState() {
@@ -82,9 +82,15 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
       _error = null;
     });
 
-    final data = await ApiService.getProgressAnalytics();
+    final results = await Future.wait([
+      ApiService.getProgressAnalytics(),
+      ApiService.getProgressionStatus(),
+    ]);
 
     if (!mounted) return;
+
+    final data = results[0];
+    final progressionData = results[1];
 
     if (data['error'] != null) {
       setState(() {
@@ -108,6 +114,7 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
           {};
       _improvement = ImprovementStats.fromJson(data['improvement'] as Map<String, dynamic>? ?? {});
       _totalStats = TotalStats.fromJson(data['total_stats'] as Map<String, dynamic>? ?? {});
+      _progression = progressionData['error'] == null ? progressionData : null;
       _loading = false;
     });
   }
@@ -173,23 +180,28 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
                 child: RepaintBoundary(
                   key: _shareBoundaryKey,
                   child: Container(
-                    // Solid background so the exported PNG isn't transparent.
                     color: AppColors.background,
                     padding: EdgeInsets.all(horizontalPadding),
+                    // FIX: reordered — Stats now come right after the
+                    // Performance Spectrum (item 5). Mode Score card
+                    // removed (duplicate of Dashboard); replaced with a
+                    // Level Progress card (item 3's "alternative").
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _PerformanceSpectrumCard(improvement: _improvement, sessions: _sessions),
+                        _PerformanceSpectrumCard(sessions: _sessions),
+                        const SizedBox(height: 16),
+                        _StatsGridCard(stats: _totalStats),
                         const SizedBox(height: 16),
                         if (_sessions.length >= 2) _AccuracyTrendCard(sessions: _sessions),
                         if (_sessions.length >= 2) const SizedBox(height: 16),
-                        _ModeScoreCard(modeScores: _modeScores),
-                        const SizedBox(height: 16),
+                        if (_progression != null) ...[
+                          _LevelProgressCard(progression: _progression!),
+                          const SizedBox(height: 16),
+                        ],
                         _ErrorBreakdownCard(breakdown: _errorBreakdown),
                         const SizedBox(height: 16),
                         _TopErrorsCard(errors: _topErrors),
-                        const SizedBox(height: 16),
-                        _StatsGridCard(stats: _totalStats),
                         const SizedBox(height: 16),
                       ],
                     ),
@@ -292,7 +304,6 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
     _showGeneratingSnackBar();
 
     try {
-      // Let the snackbar/frame settle before we snapshot the boundary.
       await Future.delayed(const Duration(milliseconds: 100));
 
       final boundary = _shareBoundaryKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
@@ -301,9 +312,6 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
         return;
       }
 
-      // Cap the pixel ratio on very tall content so the PNG doesn't
-      // balloon in size (all cards render even though only part is visible
-      // on screen, since RepaintBoundary captures full layout size).
       final heightFactor = boundary.size.height > 0 ? 2400 / boundary.size.height : 1.0;
       final pixelRatio = heightFactor.clamp(1.0, 2.5);
 
@@ -403,35 +411,34 @@ class _AnimatedCounter extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════
-// 1. PERFORMANCE SPECTRUM — Best / Average / Latest
+// 1. PERFORMANCE SPECTRUM — theme colors, trend badge/text removed
 // ═══════════════════════════════════════════════════════
 
 class _PerformanceSpectrumCard extends StatelessWidget {
-  final ImprovementStats improvement;
   final List<SessionData> sessions;
-  const _PerformanceSpectrumCard({required this.improvement, required this.sessions});
+  const _PerformanceSpectrumCard({required this.sessions});
 
   @override
   Widget build(BuildContext context) {
     final best = sessions.isEmpty ? 0.0 : sessions.map((s) => s.accuracy).reduce((a, b) => a > b ? a : b);
     final avg = sessions.isEmpty ? 0.0 : sessions.map((s) => s.accuracy).reduce((a, b) => a + b) / sessions.length;
     final latest = sessions.isEmpty ? 0.0 : sessions.last.accuracy;
-    final isPositive = improvement.percentageChange >= 0;
 
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isPositive
-              ? [const Color(0xFF0EA5E9), const Color(0xFF2563EB), const Color(0xFF4F46E5)]
-              : [const Color(0xFFF59E0B), const Color(0xFFF97316), const Color(0xFFEF4444)],
+        // FIX: theme gradient instead of an unrelated blue/orange one,
+        // and no longer flips color based on trend since the trend
+        // badge/text is removed.
+        gradient: const LinearGradient(
+          colors: [AppColors.primaryDark, AppColors.primary, AppColors.accent],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: (isPositive ? const Color(0xFF2563EB) : const Color(0xFFF97316)).withValues(alpha: 0.25),
+            color: AppColors.primary.withValues(alpha: 0.25),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -441,57 +448,14 @@ class _PerformanceSpectrumCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _ResponsiveCardHeader(
-            title: const Text('Performance Spectrum', style: TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w500, letterSpacing: 0.3)),
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(20)),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    isPositive ? Icons.trending_up_rounded : Icons.trending_down_rounded,
-                    size: 14,
-                    color: isPositive ? const Color(0xFF4ADE80) : const Color(0xFFF87171),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${isPositive ? '+' : ''}${improvement.percentageChange.toStringAsFixed(0)}%',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: isPositive ? const Color(0xFF4ADE80) : const Color(0xFFF87171)),
-                  ),
-                ],
-              ),
-            ),
-            breakpoint: 260,
-          ),
+          const Text('Performance Spectrum',
+              style: TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w500, letterSpacing: 0.3)),
           const SizedBox(height: 24),
           _spectrumBar('Personal Best', best, best, Icons.emoji_events_rounded, const Color(0xFFFCD34D)),
           const SizedBox(height: 18),
           _spectrumBar('Your Average', avg, best, Icons.analytics_rounded, Colors.white),
           const SizedBox(height: 18),
           _spectrumBar('Latest Session', latest, best, Icons.flash_on_rounded, const Color(0xFFA5F3FC)),
-          const SizedBox(height: 20),
-          const Divider(color: Colors.white24),
-          const SizedBox(height: 10),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                isPositive ? Icons.trending_up_rounded : Icons.trending_down_rounded,
-                color: isPositive ? Colors.greenAccent : Colors.redAccent,
-                size: 16,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  isPositive
-                      ? "You're on an upward trajectory. Keep the momentum!"
-                      : "Every expert was once a beginner. Stay consistent!",
-                  style: const TextStyle(fontSize: 12, color: Colors.white70),
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -550,7 +514,7 @@ class _PerformanceSpectrumCard extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════
-// 2. ACCURACY TREND — Hero Expand + Drawing Animation
+// 2. ACCURACY TREND — "tap to expand" hint is now actually tappable
 // ═══════════════════════════════════════════════════════
 
 class _AccuracyTrendCard extends StatelessWidget {
@@ -585,8 +549,8 @@ class _AccuracyTrendCard extends StatelessWidget {
               onTap: () => _openFullScreen(context),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(20)),
-                child: const Text('↗ Improving', style: TextStyle(fontSize: 11, color: Color(0xFF16A34A), fontWeight: FontWeight.w600)),
+                decoration: BoxDecoration(color: AppColors.successLight, borderRadius: BorderRadius.circular(20)),
+                child: Text('↗ Improving', style: TextStyle(fontSize: 11, color: AppColors.success, fontWeight: FontWeight.w600)),
               ),
             ),
           ),
@@ -605,14 +569,20 @@ class _AccuracyTrendCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          Center(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.touch_app_rounded, size: 13, color: Colors.grey.shade400),
-                const SizedBox(width: 4),
-                Text('Tap to expand full screen', style: TextStyle(fontSize: 10, color: Colors.grey.shade400)),
-              ],
+          // FIX: this hint row previously had no tap handler at all —
+          // only the chart above it responded to taps. Now it opens the
+          // same full-screen view.
+          GestureDetector(
+            onTap: () => _openFullScreen(context),
+            child: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.touch_app_rounded, size: 13, color: Colors.grey.shade400),
+                  const SizedBox(width: 4),
+                  Text('Tap to expand full screen', style: TextStyle(fontSize: 10, color: Colors.grey.shade400)),
+                ],
+              ),
             ),
           ),
         ],
@@ -679,7 +649,7 @@ class _AnimatedAccuracyLineChart extends StatelessWidget {
               LineChartBarData(
                 spots: visibleSessions.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value.accuracy)).toList(),
                 isCurved: true,
-                gradient: const LinearGradient(colors: [Color(0xFF2563EB), Color(0xFF3B82F6)]),
+                gradient: const LinearGradient(colors: [AppColors.primary, AppColors.accent]),
                 barWidth: isFullScreen ? 4 : 3,
                 isStrokeCapRound: true,
                 dotData: FlDotData(
@@ -688,7 +658,7 @@ class _AnimatedAccuracyLineChart extends StatelessWidget {
                     final isLast = index == visibleSessions.length - 1;
                     return FlDotCirclePainter(
                       radius: isLast ? (isFullScreen ? 6 : 5) : (isFullScreen ? 5 : 4),
-                      color: isLast ? const Color(0xFF16A34A) : const Color(0xFF2563EB),
+                      color: isLast ? AppColors.success : AppColors.primary,
                       strokeWidth: 2,
                       strokeColor: Colors.white,
                     );
@@ -697,7 +667,7 @@ class _AnimatedAccuracyLineChart extends StatelessWidget {
                 belowBarData: BarAreaData(
                   show: true,
                   gradient: LinearGradient(
-                    colors: [const Color(0xFF2563EB).withValues(alpha: 0.25), const Color(0xFF2563EB).withValues(alpha: 0)],
+                    colors: [AppColors.primary.withValues(alpha: 0.25), AppColors.primary.withValues(alpha: 0)],
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                   ),
@@ -800,217 +770,71 @@ class _FullScreenAccuracyChart extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════
-// 3. SCORE BY MODE — Clean Dropdown, Single Reveal
+// 3. LEVEL PROGRESS — replaces the Mode Score card that duplicated
+// Dashboard's Mode Performance card
 // ═══════════════════════════════════════════════════════
 
-class _ModeMeta {
-  final String key;
-  final String label;
-  final Color color;
-  final IconData icon;
-  const _ModeMeta(this.key, this.label, this.color, this.icon);
-}
+class _LevelProgressCard extends StatelessWidget {
+  final Map<String, dynamic> progression;
+  const _LevelProgressCard({required this.progression});
 
-const List<_ModeMeta> _modeMetas = [
-  _ModeMeta('public_speaking', 'Public Speaking', AppColors.primary, Icons.mic_rounded),
-  _ModeMeta('daily_conversation', 'Daily Conversation', AppColors.accent, Icons.chat_bubble_rounded),
-  _ModeMeta('script_based', 'Script-Based', AppColors.success, Icons.description_rounded),
-];
-
-class _ModeScoreCard extends StatefulWidget {
-  final Map<String, double> modeScores;
-  const _ModeScoreCard({required this.modeScores});
-
-  @override
-  State<_ModeScoreCard> createState() => _ModeScoreCardState();
-}
-
-class _ModeScoreCardState extends State<_ModeScoreCard> {
-  String _selectedKey = _modeMetas.first.key;
-
-  _ModeMeta get _selectedMeta => _modeMetas.firstWhere((m) => m.key == _selectedKey);
-
-  String _rankLabel(double score) {
-    if (score >= 85) return 'Excellent performance';
-    if (score >= 70) return 'Good, keep practicing';
-    if (score >= 50) return 'Needs more practice';
-    return 'Just getting started';
-  }
+  static const _levelLabels = {
+    'beginner': 'Beginner',
+    'intermediate': 'Intermediate',
+    'expert': 'Expert',
+  };
 
   @override
   Widget build(BuildContext context) {
-    final score = widget.modeScores[_selectedKey] ?? 0;
-    final meta = _selectedMeta;
+    final level = progression['current_level']?.toString() ?? 'beginner';
+    final avgScore = (progression['rolling_avg_score'] as num?)?.toDouble() ?? 0;
+    final errorRate = (progression['rolling_error_rate'] as num?)?.toDouble() ?? 0;
+    final masteryRatio = (progression['mastery_ratio'] as num?)?.toDouble() ?? 0;
 
     return _CardShell(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          _ResponsiveCardHeader(
-            title: const Text('Score by Mode', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: meta.color.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: meta.color.withValues(alpha: 0.2)),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _selectedKey,
-                  isDense: true,
-                  icon: Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: meta.color),
-                  style: TextStyle(fontSize: 13, color: meta.color, fontWeight: FontWeight.w700),
-                  dropdownColor: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  items: _modeMetas
-                      .map((m) => DropdownMenuItem(
-                            value: m.key,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(m.icon, size: 16, color: m.color),
-                                const SizedBox(width: 8),
-                                Text(m.label),
-                              ],
-                            ),
-                          ))
-                      .toList(),
-                  onChanged: (v) {
-                    if (v != null) setState(() => _selectedKey = v);
-                  },
-                ),
-              ),
+          const Text('Level Progress',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(20),
             ),
+            child: Text(_levelLabels[level] ?? level,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary)),
           ),
-          const SizedBox(height: 24),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 350),
-            transitionBuilder: (child, animation) {
-              return FadeTransition(
-                opacity: animation,
-                child: SlideTransition(
-                  position: Tween<Offset>(begin: const Offset(0.05, 0), end: Offset.zero).animate(animation),
-                  child: child,
-                ),
-              );
-            },
-            child: _buildModeDetail(meta, score, key: ValueKey(_selectedKey)),
+          const SizedBox(height: 18),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _stat('${avgScore.toStringAsFixed(0)}%', 'Avg. Score', AppColors.success),
+              _stat('${errorRate.toStringAsFixed(0)}%', 'Error Rate', AppColors.warning),
+              _stat('${masteryRatio.toStringAsFixed(0)}%', 'Mastery', AppColors.accent),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildModeDetail(_ModeMeta meta, double score, {required Key key}) {
-    return LayoutBuilder(
-      key: key,
-      builder: (context, constraints) {
-        final gauge = _AnimatedGauge(value: score, color: meta.color);
-        final details = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(color: meta.color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-              child: Text(meta.label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: meta.color)),
-            ),
-            const SizedBox(height: 10),
-            Text(_rankLabel(score), style: TextStyle(fontSize: 13, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 6),
-            Text(
-              score >= 70 ? 'You are performing well in this mode.' : 'Focus on this area to boost your overall score.',
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
-            ),
-          ],
-        );
-
-        if (constraints.maxWidth < 320) {
-          return Column(
-            children: [
-              Center(child: gauge),
-              const SizedBox(height: 16),
-              details,
-            ],
-          );
-        }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            gauge,
-            const SizedBox(width: 20),
-            Expanded(child: details),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _AnimatedGauge extends StatelessWidget {
-  final double value;
-  final Color color;
-  const _AnimatedGauge({required this.value, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: (value / 100).clamp(0, 1)),
-      duration: const Duration(milliseconds: 1000),
-      curve: Curves.easeOutCubic,
-      builder: (context, t, child) {
-        return SizedBox(
-          width: 100,
-          height: 100,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              SizedBox(
-                width: 100,
-                height: 100,
-                child: CircularProgressIndicator(
-                  value: 1,
-                  strokeWidth: 10,
-                  backgroundColor: const Color(0xFFF1F5F9),
-                  valueColor: const AlwaysStoppedAnimation(Color(0xFFF1F5F9)),
-                ),
-              ),
-              SizedBox(
-                width: 100,
-                height: 100,
-                child: CircularProgressIndicator(
-                  value: t,
-                  strokeWidth: 10,
-                  backgroundColor: Colors.transparent,
-                  valueColor: AlwaysStoppedAnimation(color),
-                  strokeCap: StrokeCap.round,
-                ),
-              ),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('${(t * 100).toStringAsFixed(0)}%', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-                  const Text('Score', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
+  Widget _stat(String value, String label, Color color) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: color)),
+        const SizedBox(height: 4),
+        Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+      ],
     );
   }
 }
 
 // ═══════════════════════════════════════════════════════
-// 4. ERROR BREAKDOWN — Tap to Expand Full Screen
-//
-// 3 categories only (Substitution / Omission / Insertion), matching
-// PhonemeError.ERROR_TYPES on the backend exactly. "Stress" was dropped:
-// the backend doesn't detect stress errors at all yet, so a 4th category
-// here would always read 0 and imply a capability that doesn't exist.
-// "Skipped" (whole words never spoken) is tracked separately elsewhere
-// (session stats) and isn't part of this per-phoneme breakdown.
+// 4. ERROR BREAKDOWN — content centered
 // ═══════════════════════════════════════════════════════
 
 class _ErrorEntry {
@@ -1044,18 +868,16 @@ class _ErrorBreakdownCard extends StatelessWidget {
     if (total == 0) {
       return _CardShell(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const Text('Error Breakdown', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
             const SizedBox(height: 40),
-            Center(
-              child: Column(
-                children: [
-                  Icon(Icons.check_circle, size: 48, color: Colors.green.shade300),
-                  const SizedBox(height: 12),
-                  const Text('No errors recorded yet!', style: TextStyle(fontSize: 15, color: Color(0xFF64748B), fontWeight: FontWeight.w500)),
-                ],
-              ),
+            Column(
+              children: [
+                Icon(Icons.check_circle, size: 48, color: Colors.green.shade300),
+                const SizedBox(height: 12),
+                const Text('No errors recorded yet!', style: TextStyle(fontSize: 15, color: Color(0xFF64748B), fontWeight: FontWeight.w500)),
+              ],
             ),
             const SizedBox(height: 40),
           ],
@@ -1065,18 +887,20 @@ class _ErrorBreakdownCard extends StatelessWidget {
 
     final entries = [
       _ErrorEntry('Substitution', breakdown.substitution, const Color(0xFFEF4444)),
-      _ErrorEntry('Omission', breakdown.omission, const Color(0xFFF59E0B)),
-      _ErrorEntry('Insertion', breakdown.insertion, const Color(0xFF06B6D4)),
+      _ErrorEntry('Omission', breakdown.omission, AppColors.warning),
+      _ErrorEntry('Insertion', breakdown.insertion, AppColors.accent),
     ];
 
     return GestureDetector(
       onTap: () => _openFullScreen(context),
       child: _CardShell(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             _ResponsiveCardHeader(
-              title: const Text('Error Breakdown', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              title: const Text('Error Breakdown',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
               trailing: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(20)),
@@ -1094,29 +918,32 @@ class _ErrorBreakdownCard extends StatelessWidget {
             LayoutBuilder(
               builder: (context, constraints) {
                 final pieSize = constraints.maxWidth < 320 ? 100.0 : 130.0;
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    SizedBox(
-                      width: pieSize,
-                      height: pieSize,
-                      child: PieChart(
-                        PieChartData(
-                          sections: entries.map((e) => _pieSection(e, total)).toList(),
-                          centerSpaceRadius: pieSize * 0.26,
-                          sectionsSpace: 2,
+                return Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: pieSize,
+                        height: pieSize,
+                        child: PieChart(
+                          PieChartData(
+                            sections: entries.map((e) => _pieSection(e, total)).toList(),
+                            centerSpaceRadius: pieSize * 0.26,
+                            sectionsSpace: 2,
+                          ),
+                          swapAnimationDuration: const Duration(milliseconds: 600),
+                          swapAnimationCurve: Curves.easeOutCubic,
                         ),
-                        swapAnimationDuration: const Duration(milliseconds: 600),
-                        swapAnimationCurve: Curves.easeOutCubic,
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
+                      const SizedBox(width: 16),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
                         children: entries.map((e) => _pieLegend(e, total)).toList(),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 );
               },
             ),
@@ -1142,17 +969,17 @@ class _ErrorBreakdownCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(width: 10, height: 10, decoration: BoxDecoration(color: e.color, borderRadius: BorderRadius.circular(3))),
           const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(e.label, style: const TextStyle(fontSize: 12, color: Color(0xFF475569), fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
-                Text('${e.count} errors ($pct%)', style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)), overflow: TextOverflow.ellipsis),
-              ],
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(e.label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: Color(0xFF475569), fontWeight: FontWeight.w500)),
+              Text('${e.count} errors ($pct%)', textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+            ],
           ),
         ],
       ),
@@ -1169,8 +996,8 @@ class _FullScreenErrorBreakdown extends StatelessWidget {
     final total = breakdown.total;
     final entries = [
       _ErrorEntry('Substitution', breakdown.substitution, const Color(0xFFEF4444)),
-      _ErrorEntry('Omission', breakdown.omission, const Color(0xFFF59E0B)),
-      _ErrorEntry('Insertion', breakdown.insertion, const Color(0xFF06B6D4)),
+      _ErrorEntry('Omission', breakdown.omission, AppColors.warning),
+      _ErrorEntry('Insertion', breakdown.insertion, AppColors.accent),
     ];
 
     return Scaffold(
@@ -1269,7 +1096,7 @@ class _FullScreenErrorBreakdown extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════
-// 5. TOP MISPRONOUNCED WORDS — Uniform red error styling
+// 5. TOP MISPRONOUNCED WORDS
 // ═══════════════════════════════════════════════════════
 
 class _TopErrorsCard extends StatefulWidget {
@@ -1282,11 +1109,8 @@ class _TopErrorsCard extends StatefulWidget {
 
 class _TopErrorsCardState extends State<_TopErrorsCard> {
   int _limit = 5;
-  String _sortBy = 'Frequency'; // Frequency | Rate | A-Z
+  String _sortBy = 'Frequency';
 
-  // Same red used for "Substitution" in the Error Breakdown card, applied
-  // uniformly here so all mispronounced-word entries read as one consistent
-  // "error" color instead of a rainbow per rank.
   static const Color _accent = Color(0xFFEF4444);
   static const Color _bg = Color(0xFFFEF2F2);
   static const Color _border = Color(0xFFFECACA);
@@ -1313,18 +1137,16 @@ class _TopErrorsCardState extends State<_TopErrorsCard> {
     if (widget.errors.isEmpty) {
       return _CardShell(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const Text('Top Mispronounced Words', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
             const SizedBox(height: 40),
-            Center(
-              child: Column(
-                children: [
-                  Icon(Icons.emoji_events, size: 48, color: Colors.amber.shade300),
-                  const SizedBox(height: 12),
-                  const Text('Perfect pronunciation so far!', style: TextStyle(fontSize: 15, color: Color(0xFF64748B), fontWeight: FontWeight.w500)),
-                ],
-              ),
+            Column(
+              children: [
+                Icon(Icons.emoji_events, size: 48, color: Colors.amber.shade300),
+                const SizedBox(height: 12),
+                const Text('Perfect pronunciation so far!', style: TextStyle(fontSize: 15, color: Color(0xFF64748B), fontWeight: FontWeight.w500)),
+              ],
             ),
             const SizedBox(height: 40),
           ],
@@ -1350,7 +1172,6 @@ class _TopErrorsCardState extends State<_TopErrorsCard> {
               runSpacing: 8,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                // Sort dropdown
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(20), border: Border.all(color: AppColors.divider)),
@@ -1371,7 +1192,6 @@ class _TopErrorsCardState extends State<_TopErrorsCard> {
                     ),
                   ),
                 ),
-                // Count dropdown
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                   decoration: BoxDecoration(color: _bg, borderRadius: BorderRadius.circular(20), border: Border.all(color: _border)),
@@ -1454,7 +1274,7 @@ class _TopErrorsCardState extends State<_TopErrorsCard> {
 }
 
 // ═══════════════════════════════════════════════════════
-// 6. STATS — Grid / List / Carousel Toggle
+// 6. STATS
 // ═══════════════════════════════════════════════════════
 
 class _GridStat {
@@ -1497,10 +1317,12 @@ class _StatsGridCardState extends State<_StatsGridCard> {
 
     return _CardShell(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           _ResponsiveCardHeader(
-            title: const Text('Your Stats', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            title: const Text('Your Stats',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
               decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(20)),
@@ -1748,10 +1570,6 @@ class WordError {
       );
 }
 
-/// Matches PhonemeError.ERROR_TYPES on the backend (minus "skipped", which
-/// is a whole-word-never-spoken stat tracked elsewhere, not a phoneme-level
-/// error category). No "stress" field — the backend doesn't detect stress
-/// errors yet, so there's nothing real to bind it to.
 class ErrorBreakdown {
   final int substitution;
   final int omission;

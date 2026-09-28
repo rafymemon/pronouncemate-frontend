@@ -408,14 +408,6 @@ class SessionSummaryScreen extends StatelessWidget {
     return Colors.redAccent;
   }
 
-  /// Pulls a non-empty `script_text` out of a focus-script map, or null.
-  static String? _extractScriptText(dynamic focusScript) {
-    if (focusScript is Map) {
-      final text = focusScript['script_text'];
-      if (text is String && text.trim().isNotEmpty) return text;
-    }
-    return null;
-  }
 
   /// Practice Mistakes → opens the same Focus Script the Dashboard shows.
   ///
@@ -426,13 +418,22 @@ class SessionSummaryScreen extends StatelessWidget {
   /// 3. If there is still none (nothing generated yet, network error, empty
   ///    script) it falls back to the old word-by-word PracticeSessionScreen
   ///    so the button never dead-ends.
+  /// Pulls the full Focus Script map out of a candidate value, or null.
+  static Map<String, dynamic>? _asValidFocusScriptMap(dynamic focusScript) {
+    if (focusScript is Map) {
+      final text = focusScript['script_text'];
+      if (text is String && text.trim().isNotEmpty) {
+        return Map<String, dynamic>.from(focusScript);
+      }
+    }
+    return null;
+  }
+
   Future<void> _startPracticeSession(
       BuildContext context, List<DisplayWord> errorWords) async {
-    String? focusScriptText = _extractScriptText(focusScript);
+    Map<String, dynamic>? focusMap = _asValidFocusScriptMap(focusScript);
 
-    if (focusScriptText == null) {
-      // Root navigator is used for the loading dialog because showDialog
-      // pushes onto the root navigator by default.
+    if (focusMap == null) {
       final rootNavigator = Navigator.of(context, rootNavigator: true);
 
       showDialog(
@@ -445,24 +446,31 @@ class SessionSummaryScreen extends StatelessWidget {
 
       try {
         final data = await ApiService.getLatestFocusScript();
-        focusScriptText = _extractScriptText(data['focus_script']);
+        focusMap = _asValidFocusScriptMap(data['focus_script']);
       } catch (e) {
         debugPrint('Focus script fetch failed: $e');
       }
 
-      // Close the loading dialog (screen may have been disposed meanwhile).
       if (rootNavigator.canPop()) rootNavigator.pop();
       if (!context.mounted) return;
     }
 
     // ── Preferred path: the session's Focus Script ──
-    if (focusScriptText != null) {
+    // FIX: now passes focusScriptId + focusScriptWords through, so
+    // ActiveSessionScreen can call completeFocusScript() once this
+    // practice run finishes — previously the script was opened with no
+    // id at all, so it never got marked completed and History always
+    // showed it as pending regardless of what was actually practiced.
+    if (focusMap != null) {
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => ActiveSessionScreen(
-            scriptText: focusScriptText!,
+            scriptText: focusMap!['script_text'] as String,
             sessionTitle: 'Focus Script',
+            focusScriptId: (focusMap['id'] as num?)?.toInt(),
+            focusScriptWords:
+                List<String>.from(focusMap['source_words'] ?? []),
           ),
         ),
       );
@@ -497,7 +505,6 @@ class SessionSummaryScreen extends StatelessWidget {
     );
   }
 }
-
 // ═══════════════════════════════════════════════════════════
 // Audio Playback Button — for error word TTS
 // ═══════════════════════════════════════════════════════════

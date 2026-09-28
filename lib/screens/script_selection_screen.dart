@@ -97,7 +97,6 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen> {
   // Upload controllers
   final _titleCtrl = TextEditingController();
   final _contentCtrl = TextEditingController();
-  String _uploadLevel = 'intermediate';
 
   // ── Lifecycle ─────────────────────────────────────────
   @override
@@ -297,7 +296,6 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen> {
     final result = await ApiService.uploadScriptText(
       title: title,
       content: content,
-      level: _uploadLevel,
       mode: _selectedMode?.value,
     );
 
@@ -404,7 +402,6 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen> {
 
   // ── Upload Dialogs ──────────────────────────────────
   void _showTextDialog() {
-    _uploadLevel = _selectedLevel?.value ?? 'intermediate';
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -433,19 +430,6 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen> {
                     maxLines: 6,
                     decoration:
                         _inputDecoration('Paste or type your script here...'),
-                  ),
-                  const SizedBox(height: 16),
-                  _dialogLabel('Difficulty Level'),
-                  const SizedBox(height: 6),
-                  DropdownButtonFormField<String>(
-                    value: _uploadLevel,
-                    decoration: _inputDecoration(''),
-                    isExpanded: true,
-                    items: ProficiencyLevel.values
-                        .map((l) => DropdownMenuItem(
-                            value: l.value, child: Text(l.label)))
-                        .toList(),
-                    onChanged: (v) => setLocal(() => _uploadLevel = v!),
                   ),
                   if (_selectedMode != null) ...[
                     const SizedBox(height: 16),
@@ -638,7 +622,7 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen> {
       title: Text(title,
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           overflow: TextOverflow.ellipsis),
-      backgroundColor: _primary,
+      backgroundColor: const Color.fromARGB(255, 214, 240, 238),
       foregroundColor: Colors.white,
       elevation: 0,
       leading: _currentStep > 0
@@ -1213,28 +1197,32 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               // Title + level badge — WRAP instead of Row to prevent overflow
-              Wrap(
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 8,
-                runSpacing: 6,
-                children: [
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.55,
-                    ),
-                    child: Text(
-                      script['title'] ?? 'Untitled',
-                      style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: _textDark),
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 2,
-                    ),
+                Center(
+                  child: Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: MediaQuery.of(context).size.width * 0.55,
+                        ),
+                        child: Text(
+                          script['title'] ?? 'Untitled',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: _textDark),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 2,
+                        ),
+                      ),
+                      _levelBadge(profLevel),
+                    ],
                   ),
-                  _levelBadge(profLevel),
-                ],
-              ),
+                ),
 
               // Description
               if (script['description'] != null &&
