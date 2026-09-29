@@ -128,7 +128,7 @@ class SessionSummaryScreen extends StatelessWidget {
       backgroundColor: AppColors.screenBackground,
       appBar: AppBar(
         title: const Text("Session Summary"),
-        backgroundColor: AppColors.brandBlue,
+        backgroundColor: const Color.fromARGB(255, 207, 235, 238),
         foregroundColor: Colors.white,
         automaticallyImplyLeading: false,
       ),

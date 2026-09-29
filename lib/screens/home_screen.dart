@@ -61,8 +61,6 @@ class HomeScreenState extends State<HomeScreen> {
   }
 
   UserProgressSummary _emptySummary() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
     return UserProgressSummary(
       displayName: UserSession.instance.name,
       totalSessions: 0,
@@ -73,14 +71,8 @@ class HomeScreenState extends State<HomeScreen> {
       todaySessions: 0,
       goalTarget: 2,
       recentSessions: const [],
-      weeklyAccuracy: List.generate(
-        7,
-        (i) => DayAccuracy(
-          date: today.subtract(Duration(days: 6 - i)),
-          averageAccuracy: 0,
-          sessionCount: 0,
-        ),
-      ),
+      // Monday → Sunday of the current calendar week.
+      weeklyAccuracy: UserProgressService.emptyWeek(),
     );
   }
 
@@ -451,7 +443,7 @@ class HomeScreenState extends State<HomeScreen> {
                         const Expanded(
                           child: SectionHeader(
                             title: 'Your Progress',
-                            subtitle: 'Last 7 days',
+                            subtitle: 'This week',
                           ),
                         ),
                         TextButton(
@@ -487,13 +479,13 @@ class HomeScreenState extends State<HomeScreen> {
                       childAspectRatio: 1.1,
                       children: [
                         StatCard(
-                          label: 'Sessions (7d)',
+                          label: 'Sessions (week)',
                           value: summary.totalSessions.toString(),
                           icon: Icons.mic_rounded,
                           color: AppColors.primary,
                         ),
                         StatCard(
-                          label: 'Avg. Accuracy (7d)',
+                          label: 'Avg. Accuracy (week)',
                           value:
                               '${summary.averageAccuracy.toStringAsFixed(0)}%',
                           icon: Icons.track_changes_rounded,
@@ -531,7 +523,7 @@ class HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// ── Recent Sessions — shows 5, "View All" fetches the full history ──
+// ── Recent Sessions — shows this week's 5, "View All" fetches the full history ──
 class _RecentSessionsCard extends StatefulWidget {
   final List<SessionSnapshot> recentSessions;
   const _RecentSessionsCard({required this.recentSessions});
@@ -594,10 +586,10 @@ class _RecentSessionsCardState extends State<_RecentSessionsCard> {
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: SectionHeader(
                   title: 'Recent Sessions',
-                  subtitle: 'From the last 7 days',
+                  subtitle: _expanded ? 'Full history' : 'This week',
                 ),
               ),
               TextButton(
@@ -642,7 +634,7 @@ class _RecentSessionsCardState extends State<_RecentSessionsCard> {
         Padding(
           padding: EdgeInsets.symmetric(vertical: 12),
           child: Text(
-            'No sessions in the last 7 days. Start a practice run to see your history here.',
+            'No sessions yet this week. Start a practice run to see it here.',
             style: TextStyle(color: AppColors.textSecondary),
           ),
         ),
