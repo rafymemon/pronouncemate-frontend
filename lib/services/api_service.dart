@@ -460,4 +460,23 @@ class ApiService {
       return {'error': e.toString()};
     }
   }
+
+  /// Deletes one notification (swipe-to-dismiss). A 404 is treated as
+  /// success: the notification is already gone, which is what the user
+  /// wanted.
+  static Future<Map<String, dynamic>> deleteNotification(int id) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/notifications/$id/'),
+        headers: await authHeaders,
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200 || response.statusCode == 404) {
+        return {'message': 'Notification deleted'};
+      }
+      return {'error': 'Server error ${response.statusCode}'};
+    } catch (e) {
+      return {'error': e.toString()};
+    }
+  }
 }
