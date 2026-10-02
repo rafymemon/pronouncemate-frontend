@@ -344,7 +344,11 @@ class _DashboardScreenState extends State<DashboardScreen>
       padding: const EdgeInsets.fromLTRB(20, 60, 20, 28),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [AppColors.primaryDark, AppColors.primary, AppColors.primaryLight],
+          colors: [
+            AppColors.primaryDark,
+            AppColors.primary,
+            AppColors.primaryLight
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -1023,7 +1027,8 @@ class _DashboardGauge extends StatelessWidget {
 class _FocusWordsSection extends StatefulWidget {
   final List<Map<String, dynamic>> words;
   final Map<String, Map<String, dynamic>> masteryByWord;
-  const _FocusWordsSection({required this.words, this.masteryByWord = const {}});
+  const _FocusWordsSection(
+      {required this.words, this.masteryByWord = const {}});
 
   @override
   State<_FocusWordsSection> createState() => _FocusWordsSectionState();
@@ -1682,21 +1687,30 @@ class _FocusScriptCard extends StatelessWidget {
               const Expanded(
                 child: Text(
                   'Focus Script Ready',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white),
                 ),
               ),
               GestureDetector(
                 onTap: () => Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const FocusScriptHistoryScreen()),
+                  MaterialPageRoute(
+                      builder: (_) => const FocusScriptHistoryScreen()),
                 ),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Text('History', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w600)),
+                  child: const Text('History',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600)),
                 ),
               ),
             ],
@@ -1714,22 +1728,35 @@ class _FocusScriptCard extends StatelessWidget {
             Wrap(
               spacing: 6,
               runSpacing: 6,
-              children: words
-                  .take(6)
-                  .map((w) => Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text('"$w"',
-                            style: const TextStyle(
-                                fontSize: 11,
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600)),
-                      ))
-                  .toList(),
+              children: [
+                ...words.take(8).map((w) => Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text('"$w"',
+                          style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600)),
+                    )),
+                if (words.length > 8)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text('+${words.length - 8} more',
+                        style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700)),
+                  ),
+              ],
             ),
           ],
           const SizedBox(height: 16),

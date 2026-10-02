@@ -6,12 +6,14 @@ import 'package:just_audio/just_audio.dart';
 import '../theme/app_theme.dart';
 import '../services/recording_service.dart';
 import '../services/api_service.dart';
+import '../services/focus_api_service.dart';
 import '../services/practice_websocket_service.dart';
 import '../config.dart';
 import '../models/word_status.dart';
 import '../widgets/pronunciation_word_display.dart';
 import '../widgets/session_stats_bar.dart';
 import 'session_summary_screen.dart';
+import 'focus_script_result_screen.dart';
 
 enum _SessionState { idle, recording, processing, done }
 
@@ -66,7 +68,12 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
   int _liveJudged = 0;
   static const _minRecordingSeconds = 3;
 
-    @override
+  // ── Focus Script mode ──────────────────────────────
+  // Before/after comparison returned by the backend once the Focus Script
+  // practice run has been evaluated.
+  Map<String, dynamic>? _focusResult;
+
+  @override
   void initState() {
     super.initState();
     _stopwatch = Stopwatch();
@@ -76,8 +83,64 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
         .where((w) => w.trim().isNotEmpty)
         .map((w) => DisplayWord(w.replaceAll(RegExp(r"[^\w']"), '').toLowerCase()))
         .toList();
+
+    // Pre-highlight the Focus Script's error words so the user can see
+    // them before practicing.
+    final targets = (widget.focusScriptWords ?? [])
+        .map((w) => w.toLowerCase().trim())
+        .where((w) => w.isNotEmpty)
+        .toSet();
+    for (final w in _words) {
+      if (targets.contains(w.text)) {
+        w.isTarget = true;
+        w.tip = 'This word was a recurring error — read it carefully.';
+      }
+    }
+    if (widget.focusScriptId != null && targets.isNotEmpty) {
+      _loadFocusBaseline();
+    }
+
     _loadHistoricalAverage();
     _checkLevelUpPrompt();
+  }
+
+  /// Loads how each target word was wrong before and turns it into the
+  /// tip shown when the user taps a highlighted word.
+  Future<void> _loadFocusBaseline() async {
+    final res = await FocusApiService.getFocusScript(widget.focusScriptId!);
+    if (!mounted || res['error'] != null) return;
+
+    final baseline = (res['baseline'] as List?) ?? [];
+    final byWord = <String, Map<String, dynamic>>{};
+    for (final b in baseline) {
+      final m = Map<String, dynamic>.from(b as Map);
+      final word = (m['word'] ?? '').toString().toLowerCase();
+      if (word.isNotEmpty) byWord[word] = m;
+    }
+
+    setState(() {
+      for (final w in _words) {
+        if (!w.isTarget) continue;
+        final b = byWord[w.text];
+        if (b != null) w.tip = _baselineTip(b);
+      }
+    });
+  }
+
+  String _baselineTip(Map<String, dynamic> b) {
+    final count = (b['error_count'] as num?)?.toInt() ?? 0;
+    final type = b['error_type']?.toString() ?? '';
+    const reasons = {
+      'substitution': 'a sound was replaced',
+      'omission': 'a sound was dropped',
+      'insertion': 'an extra sound was added',
+      'skipped': 'the word was skipped',
+      'minor': 'a small slip',
+    };
+    final reason = reasons[type] ?? 'it was mispronounced';
+    final times = count > 1 ? '$count times' : 'before';
+    return 'You had trouble with this word $times — $reason. '
+        'Read it slowly and clearly this time.';
   }
 
   Future<void> _checkLevelUpPrompt() async {
@@ -222,6 +285,9 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       final wordAccuracy =
           (stats['word_accuracy'] as num?)?.toDouble() ?? score;
 
+      // The saved PracticeSession's database id (set by AnalyzeView).
+      final serverSessionId = int.tryParse('${result['session_id']}');
+
       final Map<String, List<Map<String, dynamic>>> wordQueue = {};
       for (final w in wordList) {
         final key = w['word']?.toString().toLowerCase() ?? '';
@@ -274,35 +340,51 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
         w.audioPath = r['audio_path']?.toString();
       }
 
-            // If this session came from a Focus Script, report back the
-      // post-remediation error rate on just its target words.
-      if (widget.focusScriptId != null &&
-          widget.focusScriptWords != null &&
-          widget.focusScriptWords!.isNotEmpty) {
-        final targetSet =
-            widget.focusScriptWords!.map((w) => w.toLowerCase()).toSet();
-        final targetHits =
-            _words.where((w) => targetSet.contains(w.text)).toList();
+      // ── Focus Script: complete it and get the before/after result ──
+      if (widget.focusScriptId != null) {
+        Map<String, dynamic>? focusResult;
 
-        if (targetHits.isNotEmpty) {
-          final targetErrors = targetHits
-              .where((w) =>
-                  w.status == WordStatus.error ||
-                  w.status == WordStatus.skipped)
-              .length;
-          final postErrorRate = (targetErrors / targetHits.length) * 100;
-
-          // Fire-and-forget-ish: awaited so it's recorded before the user
-          // navigates away, but failures here shouldn't block the summary.
-          try {
-            await ApiService.completeFocusScript(
-              widget.focusScriptId!,
-              postErrorRate: postErrorRate,
-            );
-          } catch (_) {
-            // Non-fatal — session results still display normally.
+        // Preferred: the backend compares this session against the
+        // original errors and returns a full per-word result.
+        if (serverSessionId != null) {
+          final res = await FocusApiService.completeWithSession(
+            widget.focusScriptId!,
+            sessionId: serverSessionId,
+          );
+          if (res['error'] == null && res['result'] is Map) {
+            focusResult = Map<String, dynamic>.from(res['result'] as Map);
           }
         }
+
+        // Fallback: old client-side error rate, so the script is still
+        // marked complete even if the comparison request fails.
+        if (focusResult == null &&
+            widget.focusScriptWords != null &&
+            widget.focusScriptWords!.isNotEmpty) {
+          final targetSet =
+              widget.focusScriptWords!.map((w) => w.toLowerCase()).toSet();
+          final targetHits =
+              _words.where((w) => targetSet.contains(w.text)).toList();
+
+          if (targetHits.isNotEmpty) {
+            final targetErrors = targetHits
+                .where((w) =>
+                    w.status == WordStatus.error ||
+                    w.status == WordStatus.skipped)
+                .length;
+            final postErrorRate = (targetErrors / targetHits.length) * 100;
+            try {
+              await ApiService.completeFocusScript(
+                widget.focusScriptId!,
+                postErrorRate: postErrorRate,
+              );
+            } catch (_) {
+              // Non-fatal — session results still display normally.
+            }
+          }
+        }
+
+        _focusResult = focusResult;
       }
 
       String? fbText;
@@ -322,12 +404,9 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
         'score': score,
         'grade': grade,
         'mistake_summary': result['mistake_summary'],
-        // FIX: AnalyzeView already computes and attaches the session's
-        // Focus Script (result['focus_script']) so the "Practice
-        // Mistakes" button opens the exact same script the Dashboard
-        // card shows — but this value was being discarded here instead
-        // of carried through to the summary screen, forcing an extra
-        // getLatestFocusScript() round-trip every time.
+        // AnalyzeView already computes and attaches the session's
+        // Focus Script so the "Practice Mistakes" button opens the exact
+        // same script the Dashboard card shows.
         'focus_script': result['focus_script'],
       };
 
@@ -347,27 +426,50 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
   }
 
   void _navigateToSummary() {
+    // Capture everything up front: the summary is built lazily (from the
+    // Focus Script result screen), possibly after this screen is disposed.
+    final words = _words;
+    final score = _score;
+    final stats = _sessionStats;
+    final scriptText = widget.scriptText;
+    final title = widget.sessionTitle;
+    final originalSessionId = _sessionId;
+    final recordingUrl = _recordingUrl;
+    final focusResult = _focusResult;
+
+    Widget buildSummary() => SessionSummaryScreen(
+          words: words,
+          sessionScore: score,
+          wordAccuracy: (stats['word_accuracy'] as num?)?.toDouble() ?? score,
+          correctWords: (stats['correct_words'] as num?)?.toInt(),
+          wrongWords: (stats['wrong_words'] as num?)?.toInt(),
+          totalWords: (stats['total_words'] as num?)?.toInt(),
+          stats: stats,
+          script: scriptText,
+          sessionTitle: title,
+          originalSessionId: originalSessionId,
+          recordingUrl: recordingUrl,
+          focusScript: stats['focus_script'] as Map<String, dynamic>?,
+        );
+
+    // Focus Script run → show the before/after results first.
+    if (focusResult != null) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => FocusScriptResultScreen(
+            result: focusResult,
+            sessionTitle: title,
+            summaryBuilder: (_) => buildSummary(),
+          ),
+        ),
+      );
+      return;
+    }
+
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (_) => SessionSummaryScreen(
-          words: _words,
-          sessionScore: _score,
-          wordAccuracy:
-              (_sessionStats['word_accuracy'] as num?)?.toDouble() ?? _score,
-          correctWords: (_sessionStats['correct_words'] as num?)?.toInt(),
-          wrongWords: (_sessionStats['wrong_words'] as num?)?.toInt(),
-          totalWords: (_sessionStats['total_words'] as num?)?.toInt(),
-          stats: _sessionStats,
-          script: widget.scriptText,
-          sessionTitle: widget.sessionTitle,
-          originalSessionId: _sessionId,
-          recordingUrl: _recordingUrl,
-          // FIX: thread the Focus Script through so Practice Mistakes
-          // doesn't need a second network call for the common case.
-          focusScript: _sessionStats['focus_script'] as Map<String, dynamic>?,
-        ),
-      ),
+      MaterialPageRoute(builder: (_) => buildSummary()),
     );
   }
 
@@ -453,6 +555,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
             cardColor: _cardBg,
           ),
         _buildLiveDeltaBadge(),
+        _buildFocusBanner(),
         Expanded(
           child: Container(
             margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -476,6 +579,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
                       words: _words,
                       onWordTap: _showWordTip,
                       pendingTextColor: _textDark,
+                      highlightTargets: _state == _SessionState.idle,
                     ),
                   ),
                 ),
@@ -518,6 +622,44 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
         _buildBottomBar(),
         const SizedBox(height: 16),
       ]),
+    );
+  }
+
+  /// Shown above a Focus Script before recording starts.
+  Widget _buildFocusBanner() {
+    if (widget.focusScriptId == null || _state != _SessionState.idle) {
+      return const SizedBox.shrink();
+    }
+    final count =
+        _words.where((w) => w.isTarget).map((w) => w.text).toSet().length;
+    if (count == 0) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFEEEE),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFFCCCC)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.flag_rounded, size: 18, color: Colors.red.shade400),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '$count error ${count == 1 ? 'word is' : 'words are'} highlighted in red. '
+              'Tap one to see what went wrong before, then record and read the whole script.',
+              style: TextStyle(
+                  fontSize: 12.5,
+                  height: 1.4,
+                  color: Colors.red.shade700,
+                  fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -671,6 +813,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       ]),
     );
   }
+
   Widget _btn({
     required String label,
     required IconData icon,

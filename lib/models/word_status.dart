@@ -8,6 +8,8 @@ enum WordStatus { pending, correct, accent, minor, error, skipped }
 /// - `minor` = amber = a close-but-not-exact acoustic read (e.g. a
 ///   dropped plural -s, a slightly shortened vowel) — flagged but far
 ///   less alarming than a hard `error`.
+/// - `isTarget` = this word is one of a Focus Script's error words
+///   (pre-highlighted before practice).
 /// Insertions (extra spoken words not in the script) have no slot here —
 /// they're reported only in the final summary.
 class DisplayWord {
@@ -17,6 +19,7 @@ class DisplayWord {
   double? score;
   String? type;
   String? audioPath;
+  bool isTarget;
 
   DisplayWord(
     this.text, {
@@ -25,5 +28,6 @@ class DisplayWord {
     this.score,
     this.type,
     this.audioPath,
+    this.isTarget = false,
   });
 }
