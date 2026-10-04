@@ -228,8 +228,6 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     _wsSub = _ws.wordResults.listen((result) {
       if (!mounted) return;
       if (result.wordIndex < 0 || result.wordIndex >= _words.length) return;
-      print(
-          '🎤 [UI] setState idx=${result.wordIndex} status=${result.status}'); // TEMP
       setState(() {
         switch (result.status) {
           case 'correct':
@@ -237,6 +235,12 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
             break;
           case 'skipped':
             _words[result.wordIndex].status = WordStatus.skipped;
+            break;
+          case 'unsure':
+            // The live (tiny.en) pass could not confirm this word. That is
+            // not a verdict — show it neutral (amber) instead of red; the
+            // final /api/analyze/ pass decides what it really was.
+            _words[result.wordIndex].status = WordStatus.minor;
             break;
           default:
             _words[result.wordIndex].status = WordStatus.error;
@@ -290,13 +294,17 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
 
       final Map<String, List<Map<String, dynamic>>> wordQueue = {};
       for (final w in wordList) {
+        // 'inserted' entries are extra words the user said that are not in
+        // the script. They never correspond to a script word, so they must
+        // not enter the queue — otherwise an inserted "the" could be consumed
+        // by (and mis-color) a real script "the".
+        if (w['type']?.toString() == 'inserted') continue;
         final key = w['word']?.toString().toLowerCase() ?? '';
         if (key.isNotEmpty) {
           wordQueue.putIfAbsent(key, () => []).add(w);
         }
       }
 
-      int correct = 0;
       for (final w in _words) {
         final queue = wordQueue[w.text];
         if (queue == null || queue.isEmpty) {
@@ -326,15 +334,13 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
           case 'minor':
             w.status = WordStatus.minor;
             break;
+          case 'skipped':
+            w.status = WordStatus.skipped;
+            break;
           default:
             w.status = WordStatus.error;
         }
 
-        // 'correct' and 'accent' both count toward the on-screen correct
-        // tally — accent variants are, by design, not penalized. 'minor'
-        // does NOT count as correct here, matching pipeline.py's
-        // correct_count, which only includes ('correct', 'accent').
-        if (type == 'correct' || type == 'accent') correct++;
         w.tip = r['explanation']?.toString();
         w.score = (r['per_word_score'] as num?)?.toDouble();
         w.audioPath = r['audio_path']?.toString();
@@ -413,7 +419,9 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
       setState(() {
         _state = _SessionState.done;
         _score = score;
-        _correctCount = correct;
+        // Backend is the single source of truth for word counts (it decides
+        // whether 'minor' reads count as correct); never re-tally locally.
+        _correctCount = backendCorrect;
         _latestFeedback = fbText;
         _audioPath = fbAudio;
       });

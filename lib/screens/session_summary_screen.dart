@@ -47,35 +47,36 @@ class SessionSummaryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // ── Use backend stats when available, otherwise fall back to local ──
+    // (The backend decides whether 'minor' reads count as correct; the local
+    // fallback below mirrors its default, pipeline.MINOR_COUNTS_AS_CORRECT.)
     final correctCount = correctWords ??
         words.where((w) =>
-            w.status == WordStatus.correct || w.status == WordStatus.accent).length;
+            w.status == WordStatus.correct ||
+            w.status == WordStatus.accent ||
+            w.status == WordStatus.minor).length;
     final errorCount = wrongWords ??
         words
             .where((w) =>
                 w.status == WordStatus.error ||
-                w.status == WordStatus.skipped ||
-                w.status == WordStatus.minor)
+                w.status == WordStatus.skipped)
             .length;
     final totalCount = totalWords ?? words.length;
     final displayScore = wordAccuracy ?? sessionScore;
     final grade = _getGrade(displayScore);
     final gradeColor = _gradeColor(displayScore);
 
-    // Get all words that are hard errors, skipped, OR minor slips.
-    // 'accent' (forgiven pronunciation variant) is deliberately excluded —
-    // it's not a mistake. 'minor' IS included: pipeline.py's
-    // _build_mistake_summary already treats 'minor' as a real, practiceable
-    // mistake (it only excludes 'correct'/'inserted'/'accent'), so excluding
-    // it here would silently hide minor slips from both this list AND the
-    // Practice Mistakes flow, even though the header count above already
-    // counts them as "wrong".
+    // Hard errors + skipped words: these are the real "Errors".
+    // 'accent' (forgiven pronunciation variant) is not a mistake.
+    // 'minor' (close-but-not-exact) is shown separately below as
+    // "Almost there" in soft amber, so the header "Errors" count and the
+    // Errors list always agree.
     final errors = words
         .where((w) =>
             w.status == WordStatus.error ||
-            w.status == WordStatus.skipped ||
-            w.status == WordStatus.minor)
+            w.status == WordStatus.skipped)
         .toList();
+    final almostThere =
+        words.where((w) => w.status == WordStatus.minor).toList();
 
     // Build severity breakdown from error types
     final severityBreakdown = <String, int>{};
@@ -123,6 +124,18 @@ class SessionSummaryScreen extends StatelessWidget {
       topMistakes: List<Map<String, dynamic>>.from(
           backendMistakeSummary?['top_mistakes'] ?? topMistakes),
     );
+
+    // Practice Mistakes is offered when there are real errors, or when the
+    // backend itself reports practiceable mistakes (e.g. if it was
+    // configured to include minor slips).
+    final backendMistakeCount =
+        (backendMistakeSummary?['mistake_count'] as num?)?.toInt() ?? 0;
+    final canPractice = errors.isNotEmpty || backendMistakeCount > 0;
+
+    // Word whose pronunciation audio is used for the "Correct" button.
+    final DisplayWord? audioSource = errors.isNotEmpty
+        ? errors.first
+        : (almostThere.isNotEmpty ? almostThere.first : null);
 
     return Scaffold(
       backgroundColor: AppColors.screenBackground,
@@ -207,8 +220,8 @@ class SessionSummaryScreen extends StatelessWidget {
                           child: _AudioPlayButton(
                             label: "Correct",
                             icon: Icons.record_voice_over,
-                            audioUrl: errors.isNotEmpty
-                                ? AppConfig.mediaUrl(errors.first.audioPath)
+                            audioUrl: audioSource != null
+                                ? AppConfig.mediaUrl(audioSource.audioPath)
                                 : null,
                             color: AppColors.brandOlive,
                           ),
@@ -230,77 +243,22 @@ class SessionSummaryScreen extends StatelessWidget {
                       fontWeight: FontWeight.bold,
                       color: AppColors.brandBlue)),
               const SizedBox(height: 12),
-              ...errors.map((e) {
-                // 'minor' slips get softer amber styling instead of red —
-                // they're flagged for practice, but visually distinct from
-                // a hard error/omission/substitution so the severity actually
-                // read as different, not just internally scored differently.
-                final isMinor = e.status == WordStatus.minor;
-                final cardBorder = isMinor ? const Color(0xFFFFD9A8) : Colors.red.shade100;
-                final chipBg = isMinor ? const Color(0xFFFFE9D6) : Colors.red.shade50;
-                final chipText = isMinor ? const Color(0xFFB35900) : Colors.red.shade700;
+              ...errors.map(_errorCard),
+            ],
 
-                return Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: cardBorder),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: chipBg,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(e.text,
-                                  style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: chipText)),
-                              const SizedBox(width: 4),
-                              PronunciationAudioButton(
-                                audioUrl: AppConfig.mediaUrl(e.audioPath),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment:CrossAxisAlignment.start,
-                            children: [
-                              Text((e.type ?? 'error').toUpperCase(),
-                                  style: const TextStyle(
-                                      fontSize: 11,
-                                      color: AppColors.textMuted,
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: 1)),
-                              Text(
-                                  "Score: ${(e.score ?? 0).toStringAsFixed(0)}%",
-                                  style: const TextStyle(
-                                      fontSize: 13,
-                                      color: AppColors.textSlate)),
-                              if (e.tip != null)
-                                Text(e.tip!,
-                                    style: const TextStyle(
-                                        fontSize: 12,
-                                        color: AppColors.textSecondary)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-              }),
+            // ── Almost there (minor slips) ────────────────
+            if (almostThere.isNotEmpty) ...[
+              if (errors.isNotEmpty) const SizedBox(height: 12),
+              const Text("Almost there",
+                  style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.brandBlue)),
+              const SizedBox(height: 4),
+              const Text("Close reads with a small slip — worth a second look.",
+                  style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+              const SizedBox(height: 12),
+              ...almostThere.map(_errorCard),
             ],
 
             if (errors.isEmpty)
@@ -314,9 +272,14 @@ class SessionSummaryScreen extends StatelessWidget {
                   Icon(Icons.check_circle,
                       color: Colors.green.shade600, size: 28),
                   const SizedBox(width: 12),
-                  const Text("Perfect pronunciation! No errors detected.",
-                      style:
-                          TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                  Expanded(
+                    child: Text(
+                        almostThere.isEmpty
+                            ? "Perfect pronunciation! No errors detected."
+                            : "No pronunciation errors — just a few small slips to polish.",
+                        style: const TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w500)),
+                  ),
                 ]),
               ),
 
@@ -362,11 +325,12 @@ class SessionSummaryScreen extends StatelessWidget {
             const SizedBox(height: 16),
 
             // ── Practice Mistakes Button ──────────────────
-            if (errors.isNotEmpty)
+            if (canPractice)
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: () => _startPracticeSession(context, errors),
+                  onPressed: () => _startPracticeSession(
+                      context, [...errors, ...almostThere]),
                   icon: const Icon(Icons.school),
                   label: const Text('Practice Mistakes'),
                   style: ElevatedButton.styleFrom(
@@ -381,6 +345,74 @@ class SessionSummaryScreen extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// One word card. 'minor' slips get softer amber styling instead of red —
+  /// they're flagged for a second look, but visually distinct from a hard
+  /// error/omission/substitution so the severity actually reads as different,
+  /// not just internally scored differently.
+  Widget _errorCard(DisplayWord e) {
+    final isMinor = e.status == WordStatus.minor;
+    final cardBorder = isMinor ? const Color(0xFFFFD9A8) : Colors.red.shade100;
+    final chipBg = isMinor ? const Color(0xFFFFE9D6) : Colors.red.shade50;
+    final chipText = isMinor ? const Color(0xFFB35900) : Colors.red.shade700;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: cardBorder),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: chipBg,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(e.text,
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: chipText)),
+                const SizedBox(width: 4),
+                PronunciationAudioButton(
+                  audioUrl: AppConfig.mediaUrl(e.audioPath),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text((e.type ?? 'error').toUpperCase(),
+                    style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textMuted,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1)),
+                Text("Score: ${(e.score ?? 0).toStringAsFixed(0)}%",
+                    style: const TextStyle(
+                        fontSize: 13, color: AppColors.textSlate)),
+                if (e.tip != null)
+                  Text(e.tip!,
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.textSecondary)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
