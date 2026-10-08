@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../services/stats_api_service.dart';
 import '../theme/app_theme.dart';
 import 'main_shell.dart';
 import 'progress_analytics_screen.dart';
 import 'active_session_screen.dart';
 import 'focus_script_history_screen.dart';
+import 'session_detail_screen.dart';
+import 'stat_detail_screen.dart';
 
 // ═══════════════════════════════════════════════════════
 // TOP-LEVEL HELPERS
@@ -103,6 +106,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   int _streakDays = 0;
   int _totalSessions = 0;
   double _bestScore = 0;
+  // All-time average accuracy (loaded from the stats endpoint after the
+  // main dashboard data). Null until it arrives.
+  double? _avgAccuracy;
   List<Map<String, dynamic>> _recentSessions = [];
   Map<String, dynamic> _quickStats = {};
   Map<String, dynamic> _improvement = {};
@@ -174,6 +180,14 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     _headerAnim.forward();
     _loadImprovementData();
+    _loadAvgAccuracy();
+  }
+
+  /// All-time average accuracy for the "Accuracy" stat card.
+  Future<void> _loadAvgAccuracy() async {
+    final res = await StatsApiService.getStatDetail('accuracy', scope: 'all');
+    if (!mounted || res['error'] != null) return;
+    setState(() => _avgAccuracy = (res['average'] as num?)?.toDouble());
   }
 
   Future<void> _loadImprovementData() async {
@@ -492,19 +506,41 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   // ═══════════════════════════════════════════════════════
-  // QUICK STATS — recolored to the app's theme palette
+  // QUICK STATS — all-time, every card opens its drill-down
   // ═══════════════════════════════════════════════════════
+
+  void _openStat(String metric) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StatDetailScreen(metric: metric, scope: StatScope.all),
+      ),
+    );
+  }
 
   Widget _buildQuickStatsCarousel() {
     final stats = [
       _StatItem('$_totalSessions', 'Sessions', Icons.play_circle_filled_rounded,
-          AppColors.primary),
+          AppColors.primary,
+          onTap: () => _openStat('sessions')),
+      _StatItem(
+          _avgAccuracy == null ? '—' : '${_avgAccuracy!.toStringAsFixed(0)}%',
+          'Accuracy',
+          Icons.track_changes_rounded,
+          AppColors.success,
+          onTap: () => _openStat('accuracy')),
       _StatItem('${_quickStats['words'] ?? 0}', 'Words',
-          Icons.text_fields_rounded, AppColors.accent),
+          Icons.text_fields_rounded, AppColors.accent,
+          onTap: () => _openStat('words')),
+      _StatItem('$_streakDays', 'Streak',
+          Icons.local_fire_department_rounded, AppColors.warning,
+          onTap: () => _openStat('streak')),
       _StatItem('${_quickStats['errors_corrected'] ?? 0}', 'Fixed',
-          Icons.check_circle_rounded, AppColors.success),
+          Icons.check_circle_rounded, AppColors.error,
+          onTap: () => _openStat('errors')),
       _StatItem(_formatMinutes(_quickStats['minutes'] ?? 0), 'Time',
-          Icons.timer_rounded, AppColors.brandBlue),
+          Icons.timer_rounded, AppColors.brandBlue,
+          onTap: () => _openStat('sessions')),
     ];
 
     return SizedBox(
@@ -516,75 +552,79 @@ class _DashboardScreenState extends State<DashboardScreen>
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (context, idx) {
           final s = stats[idx];
-          return TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0.0, end: 1.0),
-            duration: Duration(milliseconds: 600 + idx * 100),
-            curve: Curves.easeOutCubic,
-            builder: (context, t, child) {
-              final safeT = t.clamp(0.0, 1.0);
-              return Opacity(
-                opacity: safeT,
-                child: Transform.translate(
-                  offset: Offset(0, (1 - safeT) * 20),
-                  child: child,
-                ),
-              );
-            },
-            child: Container(
-              width: 120,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    s.color.withValues(alpha: 0.08),
-                    s.color.withValues(alpha: 0.02)
+          return GestureDetector(
+            onTap: s.onTap,
+            behavior: HitTestBehavior.opaque,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.0, end: 1.0),
+              duration: Duration(milliseconds: 600 + idx * 100),
+              curve: Curves.easeOutCubic,
+              builder: (context, t, child) {
+                final safeT = t.clamp(0.0, 1.0);
+                return Opacity(
+                  opacity: safeT,
+                  child: Transform.translate(
+                    offset: Offset(0, (1 - safeT) * 20),
+                    child: child,
+                  ),
+                );
+              },
+              child: Container(
+                width: 120,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      s.color.withValues(alpha: 0.08),
+                      s.color.withValues(alpha: 0.02)
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: s.color.withValues(alpha: 0.15)),
+                  boxShadow: [
+                    BoxShadow(
+                        color: s.color.withValues(alpha: 0.06),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4))
                   ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
                 ),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: s.color.withValues(alpha: 0.15)),
-                boxShadow: [
-                  BoxShadow(
-                      color: s.color.withValues(alpha: 0.06),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4))
-                ],
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                        color: s.color.withValues(alpha: 0.12),
-                        shape: BoxShape.circle),
-                    child: Icon(s.icon, color: s.color, size: 20),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    s.value,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: s.color),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    s.label,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF64748B),
-                        fontWeight: FontWeight.w500),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                          color: s.color.withValues(alpha: 0.12),
+                          shape: BoxShape.circle),
+                      child: Icon(s.icon, color: s.color, size: 20),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      s.value,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: s.color),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      s.label,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF64748B),
+                          fontWeight: FontWeight.w500),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
             ),
           );
@@ -1257,7 +1297,8 @@ class _FocusSortDropdownState extends State<_FocusSortDropdown> {
 }
 
 // ═══════════════════════════════════════════════════════
-// RECENT SESSIONS
+// RECENT SESSIONS — each row opens the full session detail,
+// "View all sessions" opens the complete all-time list
 // ═══════════════════════════════════════════════════════
 
 class _RecentSessionsSection extends StatefulWidget {
@@ -1274,6 +1315,23 @@ class _RecentSessionsSectionState extends State<_RecentSessionsSection> {
   List<Map<String, dynamic>> get _filteredSessions {
     if (_filter == 'All') return widget.sessions;
     return widget.sessions.where((s) => s['mode'] == _filter).toList();
+  }
+
+  void _openSession(int id) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => SessionDetailScreen(sessionId: id)),
+    );
+  }
+
+  void _openAllSessions() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            const StatDetailScreen(metric: 'sessions', scope: StatScope.all),
+      ),
+    );
   }
 
   @override
@@ -1319,6 +1377,7 @@ class _RecentSessionsSectionState extends State<_RecentSessionsSection> {
             final idx = entry.key;
             final session = entry.value;
             final color = _modeColorFor(session['mode']);
+            final sessionId = (session['id'] as num?)?.toInt();
 
             return TweenAnimationBuilder<double>(
               key: ValueKey(session['id'] ?? idx),
@@ -1335,93 +1394,118 @@ class _RecentSessionsSectionState extends State<_RecentSessionsSection> {
                   ),
                 );
               },
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.divider),
-                  boxShadow: [
-                    BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.03),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2))
-                  ],
-                ),
-                child: IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Container(width: 5, color: color),
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 12),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                    color: color.withValues(alpha: 0.1),
-                                    shape: BoxShape.circle),
-                                child: Icon(_modeIconFor(session['mode']),
-                                    color: color, size: 18),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      session['title'] ?? 'Practice Session',
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 14,
-                                          color: AppColors.textPrimary),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      session['date_label'] ?? '',
-                                      style: const TextStyle(
-                                          fontSize: 11,
-                                          color: AppColors.textSecondary),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
+              child: GestureDetector(
+                onTap: sessionId == null ? null : () => _openSession(sessionId),
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.divider),
+                    boxShadow: [
+                      BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.03),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2))
+                    ],
+                  ),
+                  child: IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Container(width: 5, color: color),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 12),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                      color: color.withValues(alpha: 0.1),
+                                      shape: BoxShape.circle),
+                                  child: Icon(_modeIconFor(session['mode']),
+                                      color: color, size: 18),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: _scoreColorFor(session['score'])
-                                      .withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(12),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        session['title'] ?? 'Practice Session',
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14,
+                                            color: AppColors.textPrimary),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        session['date_label'] ?? '',
+                                        style: const TextStyle(
+                                            fontSize: 11,
+                                            color: AppColors.textSecondary),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                                child: Text(
-                                  '${(session['score'] as num?)?.toStringAsFixed(0) ?? 0}%',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 13,
-                                      color: _scoreColorFor(session['score'])),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: _scoreColorFor(session['score'])
+                                        .withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    '${(session['score'] as num?)?.toStringAsFixed(0) ?? 0}%',
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 13,
+                                        color:
+                                            _scoreColorFor(session['score'])),
+                                  ),
                                 ),
-                              ),
-                            ],
+                                if (sessionId != null) ...[
+                                  const SizedBox(width: 4),
+                                  const Icon(Icons.chevron_right_rounded,
+                                      size: 20, color: AppColors.textHint),
+                                ],
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
             );
           }),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: _openAllSessions,
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('View all sessions'),
+                SizedBox(width: 2),
+                Icon(Icons.chevron_right_rounded, size: 18),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -1483,7 +1567,8 @@ class _StatItem {
   final String label;
   final IconData icon;
   final Color color;
-  _StatItem(this.value, this.label, this.icon, this.color);
+  final VoidCallback? onTap;
+  _StatItem(this.value, this.label, this.icon, this.color, {this.onTap});
 }
 
 class _ModeDisplay {

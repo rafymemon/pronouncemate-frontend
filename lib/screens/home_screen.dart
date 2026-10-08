@@ -13,6 +13,8 @@ import 'notifications_screen.dart';
 import 'profile_screen.dart';
 import 'progress_analytics_screen.dart';
 import 'script_selection_screen.dart' show ProficiencyLevel, ScriptMode;
+import 'session_detail_screen.dart';
+import 'stat_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -157,6 +159,18 @@ class HomeScreenState extends State<HomeScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const ProgressAnalyticsScreen()),
+    );
+  }
+
+  /// Opens the "this week" drill-down for one of the four progress cards.
+  /// metric: 'sessions' | 'accuracy' | 'words' | 'streak'
+  void _openStat(String metric) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            StatDetailScreen(metric: metric, scope: StatScope.week),
+      ),
     );
   }
 
@@ -443,7 +457,7 @@ class HomeScreenState extends State<HomeScreen> {
                         const Expanded(
                           child: SectionHeader(
                             title: 'Your Progress',
-                            subtitle: 'This week',
+                            subtitle: 'This week · tap a card for details',
                           ),
                         ),
                         TextButton(
@@ -478,32 +492,44 @@ class HomeScreenState extends State<HomeScreen> {
                       mainAxisSpacing: 14,
                       childAspectRatio: 1.1,
                       children: [
-                        StatCard(
-                          label: 'Sessions (week)',
-                          value: summary.totalSessions.toString(),
-                          icon: Icons.mic_rounded,
-                          color: AppColors.primary,
+                        _TappableStat(
+                          onTap: () => _openStat('sessions'),
+                          child: StatCard(
+                            label: 'Sessions (week)',
+                            value: summary.totalSessions.toString(),
+                            icon: Icons.mic_rounded,
+                            color: AppColors.primary,
+                          ),
                         ),
-                        StatCard(
-                          label: 'Avg. Accuracy (week)',
-                          value:
-                              '${summary.averageAccuracy.toStringAsFixed(0)}%',
-                          icon: Icons.track_changes_rounded,
-                          color: AppColors.success,
+                        _TappableStat(
+                          onTap: () => _openStat('accuracy'),
+                          child: StatCard(
+                            label: 'Avg. Accuracy (week)',
+                            value:
+                                '${summary.averageAccuracy.toStringAsFixed(0)}%',
+                            icon: Icons.track_changes_rounded,
+                            color: AppColors.success,
+                          ),
                         ),
-                        StatCard(
-                          label: 'Words Practiced',
-                          value: summary.wordsPracticed == null
-                              ? '—'
-                              : summary.wordsPracticed.toString(),
-                          icon: Icons.spellcheck_rounded,
-                          color: AppColors.warning,
+                        _TappableStat(
+                          onTap: () => _openStat('words'),
+                          child: StatCard(
+                            label: 'Words Practiced',
+                            value: summary.wordsPracticed == null
+                                ? '—'
+                                : summary.wordsPracticed.toString(),
+                            icon: Icons.spellcheck_rounded,
+                            color: AppColors.warning,
+                          ),
                         ),
-                        StatCard(
-                          label: 'Streak',
-                          value: '${summary.streakDays} days',
-                          icon: Icons.local_fire_department_rounded,
-                          color: AppColors.error,
+                        _TappableStat(
+                          onTap: () => _openStat('streak'),
+                          child: StatCard(
+                            label: 'Streak',
+                            value: '${summary.streakDays} days',
+                            icon: Icons.local_fire_department_rounded,
+                            color: AppColors.error,
+                          ),
                         ),
                       ],
                     ),
@@ -519,6 +545,32 @@ class HomeScreenState extends State<HomeScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+// ── Makes a stat card tappable and shows a small "opens details" arrow ──
+class _TappableStat extends StatelessWidget {
+  final Widget child;
+  final VoidCallback onTap;
+  const _TappableStat({required this.child, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Stack(
+        children: [
+          Positioned.fill(child: child),
+          const Positioned(
+            right: 10,
+            top: 10,
+            child: Icon(Icons.arrow_forward_ios_rounded,
+                size: 12, color: AppColors.textHint),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -555,6 +607,14 @@ class _RecentSessionsCardState extends State<_RecentSessionsCard> {
       _allSessions = raw.whereType<Map>().map((e) =>
           e.map((k, v) => MapEntry(k.toString(), v))).toList();
     });
+  }
+
+  /// Opens the full detail of one session (script, errors, transcript, ...).
+  void _openSession(int id) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => SessionDetailScreen(sessionId: id)),
+    );
   }
 
   String _dateLabel(DateTime? dt) {
@@ -647,6 +707,7 @@ class _RecentSessionsCardState extends State<_RecentSessionsCard> {
               score: session.score.round(),
               duration: session.durationLabel ?? '—',
               grade: session.grade,
+              onTap: session.id == null ? null : () => _openSession(session.id!),
             ))
         .toList();
   }
@@ -674,12 +735,14 @@ class _RecentSessionsCardState extends State<_RecentSessionsCard> {
       final score = (s['accuracy'] as num?)?.toDouble() ?? 0.0;
       final grade = s['grade']?.toString() ?? '—';
       final dt = DateTime.tryParse(s['created_at']?.toString() ?? '');
+      final id = (s['id'] as num?)?.toInt();
       return _RecentSession(
         title: 'Session',
         date: _dateLabel(dt),
         score: score.round(),
         duration: '—',
         grade: grade,
+        onTap: id == null ? null : () => _openSession(id),
       );
     }).toList();
   }
@@ -1174,13 +1237,14 @@ class _DrawerItem extends StatelessWidget {
   }
 }
 
-// ── Recent Session Row ───────────────────────────────────────────
+// ── Recent Session Row (tappable → full session detail) ──────────
 class _RecentSession extends StatelessWidget {
   final String title;
   final String date;
   final int score;
   final String duration;
   final String grade;
+  final VoidCallback? onTap;
 
   const _RecentSession({
     required this.title,
@@ -1188,6 +1252,7 @@ class _RecentSession extends StatelessWidget {
     required this.score,
     required this.duration,
     required this.grade,
+    this.onTap,
   });
 
   Color get _scoreColor {
@@ -1198,60 +1263,69 @@ class _RecentSession extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceVariant,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Container(
-            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            decoration: BoxDecoration(
-              color: _scoreColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Center(
-              child: Text('$score%',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                    color: _scoreColor,
-                  )),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: const TextStyle(
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceVariant,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Container(
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: _scoreColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Center(
+                child: Text('$score%',
+                    style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      color: AppColors.textPrimary,
+                      fontSize: 13,
+                      color: _scoreColor,
                     )),
-                Text(date,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    )),
-                const SizedBox(height: 2),
-                Text('Grade $grade',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textHint,
-                      fontWeight: FontWeight.w600,
-                    )),
-              ],
+              ),
             ),
-          ),
-          Text(duration,
-              style: const TextStyle(fontSize: 12, color: AppColors.textHint)),
-        ],
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: AppColors.textPrimary,
+                      )),
+                  Text(date,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      )),
+                  const SizedBox(height: 2),
+                  Text('Grade $grade',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textHint,
+                        fontWeight: FontWeight.w600,
+                      )),
+                ],
+              ),
+            ),
+            Text(duration,
+                style: const TextStyle(fontSize: 12, color: AppColors.textHint)),
+            if (onTap != null) ...[
+              const SizedBox(width: 6),
+              const Icon(Icons.chevron_right_rounded,
+                  size: 20, color: AppColors.textHint),
+            ],
+          ],
+        ),
       ),
     );
   }

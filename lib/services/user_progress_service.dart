@@ -46,6 +46,9 @@ class UserProgressSummary {
 /// A single practice session, always drawn from the current calendar week
 /// (see UserProgressSummary's scope note).
 class SessionSnapshot {
+  /// Database id of the PracticeSession. Lets a tapped row open the full
+  /// session detail screen. Null only if the backend didn't send one.
+  final int? id;
   final String title;
   final String dateLabel;
   final double score;
@@ -53,6 +56,7 @@ class SessionSnapshot {
   final String? durationLabel;
 
   const SessionSnapshot({
+    this.id,
     required this.title,
     required this.dateLabel,
     required this.score,
@@ -153,6 +157,7 @@ class UserProgressService extends ChangeNotifier {
         final date = _parseDate(session['created_at']?.toString());
         final score = _readDouble(session, const ['accuracy', 'score']) ?? 0;
         return SessionSnapshot(
+          id: _readInt(session, const ['id']),
           title: _readString(session, const [
                 'session_title',
                 'title',
