@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import '../config.dart';
+import 'auth_service.dart';
 
 class ApiService {
   static String get baseUrl => "${AppConfig.baseUrl}/api";
@@ -34,6 +35,15 @@ class ApiService {
     };
   }
 
+  /// A 401 means the server no longer accepts our token (revoked, password
+  /// changed on another device, account removed). End the session; the app
+  /// root then returns the user to the login screen.
+  static void _checkAuth(http.Response response) {
+    if (response.statusCode == 401) {
+      unawaited(AuthService.instance.handleUnauthorized());
+    }
+  }
+
   // ── Core analyze endpoint ───────────────────────────────
   static Future<Map<String, dynamic>> analyzeAudio(
       File audioFile, String scriptText, {String? scriptId}) async {
@@ -54,6 +64,7 @@ class ApiService {
     );
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
+    _checkAuth(response);
     return jsonDecode(response.body);
   }
 
@@ -67,6 +78,8 @@ class ApiService {
     );
 
     final response = await http.get(uri, headers: await authHeaders);
+    _checkAuth(response);
+    if (response.statusCode == 401) return <dynamic>[];
     return jsonDecode(response.body);
   }
 
@@ -76,6 +89,7 @@ class ApiService {
         Uri.parse('$baseUrl/profile/'),
         headers: await authHeaders,
       ).timeout(const Duration(seconds: 10));
+      _checkAuth(response);
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -94,6 +108,7 @@ class ApiService {
         headers: await authHeaders,
         body: jsonEncode(data),
       ).timeout(const Duration(seconds: 10));
+      _checkAuth(response);
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -110,6 +125,7 @@ class ApiService {
         Uri.parse('$baseUrl/profile/'),
         headers: await authHeaders,
       ).timeout(const Duration(seconds: 10));
+      _checkAuth(response);
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -140,6 +156,7 @@ class ApiService {
 
       final response = await http.get(uri, headers: headers)
           .timeout(const Duration(seconds: 10));
+      _checkAuth(response);
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -170,6 +187,7 @@ class ApiService {
       final response = await http
           .get(uri, headers: await authHeaders)
           .timeout(const Duration(seconds: 10));
+      _checkAuth(response);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -208,6 +226,7 @@ class ApiService {
       headers: await authHeaders,
       body: jsonEncode(body),
     );
+    _checkAuth(response);
     return jsonDecode(response.body);
   }
 
@@ -230,6 +249,7 @@ class ApiService {
 
     final streamed = await request.send();
     final response = await http.Response.fromStream(streamed);
+    _checkAuth(response);
     return jsonDecode(response.body);
   }
 
@@ -250,6 +270,7 @@ class ApiService {
           'level': level,
         }),
       ).timeout(const Duration(seconds: 30));
+      _checkAuth(response);
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
 
@@ -273,6 +294,7 @@ class ApiService {
             headers: await authHeaders,
           )
           .timeout(const Duration(seconds: 15));
+      _checkAuth(response);
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -289,6 +311,7 @@ class ApiService {
         Uri.parse('$baseUrl/analytics/'),
         headers: await authHeaders,
       ).timeout(const Duration(seconds: 15));
+      _checkAuth(response);
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }
@@ -305,6 +328,7 @@ class ApiService {
         Uri.parse('$baseUrl/progression/'),
         headers: await authHeaders,
       ).timeout(const Duration(seconds: 10));
+      _checkAuth(response);
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -321,6 +345,7 @@ class ApiService {
         Uri.parse('$baseUrl/progression/confirm/'),
         headers: await authHeaders,
       ).timeout(const Duration(seconds: 10));
+      _checkAuth(response);
 
       if (response.statusCode == 200 || response.statusCode == 400) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -340,6 +365,7 @@ class ApiService {
 
       final response = await http.get(uri, headers: await authHeaders)
           .timeout(const Duration(seconds: 10));
+      _checkAuth(response);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -361,6 +387,7 @@ class ApiService {
         Uri.parse('$baseUrl/focus-scripts/latest/'),
         headers: await authHeaders,
       ).timeout(const Duration(seconds: 10));
+      _checkAuth(response);
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -381,6 +408,7 @@ class ApiService {
         headers: await authHeaders,
         body: jsonEncode({'post_error_rate': postErrorRate}),
       ).timeout(const Duration(seconds: 10));
+      _checkAuth(response);
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -397,6 +425,7 @@ class ApiService {
         Uri.parse('$baseUrl/focus-scripts/'),
         headers: await authHeaders,
       ).timeout(const Duration(seconds: 10));
+      _checkAuth(response);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -418,6 +447,7 @@ class ApiService {
         Uri.parse('$baseUrl/focus-scripts/stats/'),
         headers: await authHeaders,
       ).timeout(const Duration(seconds: 10));
+      _checkAuth(response);
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -435,6 +465,7 @@ class ApiService {
         Uri.parse('$baseUrl/notifications/'),
         headers: await authHeaders,
       ).timeout(const Duration(seconds: 10));
+      _checkAuth(response);
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -451,6 +482,7 @@ class ApiService {
         Uri.parse('$baseUrl/notifications/read/'),
         headers: await authHeaders,
       ).timeout(const Duration(seconds: 10));
+      _checkAuth(response);
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
@@ -470,6 +502,7 @@ class ApiService {
         Uri.parse('$baseUrl/notifications/$id/'),
         headers: await authHeaders,
       ).timeout(const Duration(seconds: 10));
+      _checkAuth(response);
 
       if (response.statusCode == 200 || response.statusCode == 404) {
         return {'message': 'Notification deleted'};

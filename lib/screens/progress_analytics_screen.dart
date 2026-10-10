@@ -1,7 +1,6 @@
 // lib/screens/progress_analytics_screen.dart
 
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -62,7 +61,6 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
   List<SessionData> _sessions = [];
   List<WordError> _topErrors = [];
   ErrorBreakdown _errorBreakdown = ErrorBreakdown.empty();
-  Map<String, double> _modeScores = {};
   ImprovementStats _improvement = ImprovementStats(firstAvg: 0, lastAvg: 0, percentageChange: 0);
   TotalStats _totalStats = TotalStats(sessions: 0, words: 0, errors: 0, minutes: 0);
 
@@ -108,10 +106,6 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
           .map((e) => WordError.fromJson(e as Map<String, dynamic>))
           .toList();
       _errorBreakdown = ErrorBreakdown.fromJson(data['error_breakdown'] as Map<String, dynamic>? ?? {});
-      _modeScores = (data['mode_scores'] as Map<String, dynamic>?)?.map(
-            (k, v) => MapEntry(k, (v as num).toDouble()),
-          ) ??
-          {};
       _improvement = ImprovementStats.fromJson(data['improvement'] as Map<String, dynamic>? ?? {});
       _totalStats = TotalStats.fromJson(data['total_stats'] as Map<String, dynamic>? ?? {});
       _progression = progressionData['error'] == null ? progressionData : null;
@@ -326,7 +320,7 @@ class _ProgressAnalyticsScreenState extends State<ProgressAnalyticsScreen> {
 
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/pronouncemate_progress_${DateTime.now().millisecondsSinceEpoch}.png');
-      await file.writeAsBytes(bytes as Uint8List);
+      await file.writeAsBytes(bytes);
 
       await Share.shareXFiles(
         [XFile(file.path)],

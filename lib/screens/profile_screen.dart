@@ -2,9 +2,14 @@
 
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
 import '../services/user_session.dart';
 import '../theme/app_theme.dart';
+import '../utils/validators.dart';
+import '../widgets/auth_widgets.dart';
+import '../widgets/change_email_sheet.dart';
 import '../widgets/common_widgets.dart';
+import 'login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -28,23 +33,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _autoSaveRecordings = false;
 
   // ── Level config (still used for the header badge/gradient) ──
-static const _levelLabels = {
+  static const _levelLabels = {
     'beginner':     'Beginner',
     'intermediate': 'Intermediate',
     'expert':       'Expert',
   };
 
-static const _levelColors = {
+  static const _levelColors = {
     'beginner':     Color(0xFF16A34A),
     'intermediate': Color(0xFF0284C7),
     'expert':       Color(0xFFDC2626),
   };
 
-static const _levelIcons = {
-  'beginner':     Icons.looks_one_rounded,
-  'intermediate': Icons.looks_two_rounded,
-  'expert':       Icons.looks_3_rounded,
-};
+  static const _levelIcons = {
+    'beginner':     Icons.looks_one_rounded,
+    'intermediate': Icons.looks_two_rounded,
+    'expert':       Icons.looks_3_rounded,
+  };
+
   // ── Lifecycle ────────────────────────────────────────────
   @override
   void initState() {
@@ -387,6 +393,12 @@ static const _levelIcons = {
         onChanged: _updateDailyReminders,
       ),
       _tileAction(
+        icon: Icons.email_outlined,
+        title: 'Email Address',
+        subtitle: _email.isEmpty ? 'Add an email address' : _email,
+        onTap: _changeEmail,
+      ),
+      _tileAction(
         icon: Icons.lock_outline_rounded,
         title: 'Change Password',
         subtitle: 'Update your account password',
@@ -505,8 +517,11 @@ static const _levelIcons = {
                   fontWeight: FontWeight.w600, fontSize: 14,
                   color: textColor)),
               if (subtitle != null)
-                Text(subtitle, style: const TextStyle(
-                    fontSize: 12, color: AppColors.textSecondary)),
+                Text(subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary)),
             ],
           )),
           if (showArrow)
@@ -641,62 +656,147 @@ static const _levelIcons = {
     );
   }
 
+  // ── Change email (OTP-verified) ─────────────────────────────
+  Future<void> _changeEmail() async {
+    final updated = await ChangeEmailSheet.show(context, currentEmail: _email);
+    if (updated == null || !mounted) return;
+    _showSuccess('Email updated');
+    await _loadProfile();
+  }
+
+  // ── Change password ─────────────────────────────────────────
   void _showChangePassword() {
-    final oldCtrl = TextEditingController();
-    final newCtrl = TextEditingController();
+    final formKey     = GlobalKey<FormState>();
+    final oldCtrl     = TextEditingController();
+    final newCtrl     = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    bool saving = false;
+    String? error;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-            bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: const BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Center(child: Container(width: 40, height: 4,
-                decoration: BoxDecoration(color: AppColors.divider,
-                    borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 20),
-            const Text('Change Password',
-                style: TextStyle(fontSize: 20,
-                    fontWeight: FontWeight.bold)),
-            const SizedBox(height: 20),
-            AppTextField(
-              label: 'Current Password',
-              hint: '••••••••',
-              prefixIcon: Icons.lock_outline,
-              controller: oldCtrl,
-              isPassword: true,
-            ),
-            const SizedBox(height: 12),
-            AppTextField(
-              label: 'New Password',
-              hint: '••••••••',
-              prefixIcon: Icons.lock_reset_rounded,
-              controller: newCtrl,
-              isPassword: true,
-            ),
-            const SizedBox(height: 24),
-            PrimaryButton(
-              label: 'Update Password',
-              onPressed: () {
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          Future<void> submit() async {
+            if (!formKey.currentState!.validate()) return;
+            setSheet(() { saving = true; error = null; });
+            try {
+              await AuthService.instance.changePassword(
+                currentPassword: oldCtrl.text,
+                newPassword: newCtrl.text,
+              );
+              if (!ctx.mounted) return;
+              Navigator.pop(ctx);
+              _showSuccess('Password updated. Other devices were signed out.');
+            } on AuthException catch (e) {
+              if (!ctx.mounted) return;
+              if (e.statusCode == 401) {
+                // Session ended: the app root sends the user to the login screen.
                 Navigator.pop(ctx);
-                _showSnack('Password change coming soon', isInfo: true);
-              },
+                return;
+              }
+              setSheet(() { saving = false; error = e.message; });
+            } catch (_) {
+              if (!ctx.mounted) return;
+              setSheet(() {
+                saving = false;
+                error = 'Something went wrong. Please try again.';
+              });
+            }
+          }
+
+          return Padding(
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: const BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: SingleChildScrollView(
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(child: Container(width: 40, height: 4,
+                          decoration: BoxDecoration(color: AppColors.divider,
+                              borderRadius: BorderRadius.circular(2)))),
+                      const SizedBox(height: 20),
+                      const Text('Change Password',
+                          style: TextStyle(fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary)),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Your other devices will be signed out after the change.',
+                        style: TextStyle(fontSize: 12.5,
+                            color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(height: 20),
+                      AppTextField(
+                        label: 'Current Password',
+                        hint: 'Your current password',
+                        prefixIcon: Icons.lock_outline,
+                        controller: oldCtrl,
+                        isPassword: true,
+                        validator: (v) => (v == null || v.isEmpty)
+                            ? 'Enter your current password'
+                            : null,
+                      ),
+                      const SizedBox(height: 12),
+                      AppTextField(
+                        label: 'New Password',
+                        hint: 'Min. 8 characters',
+                        prefixIcon: Icons.lock_reset_rounded,
+                        controller: newCtrl,
+                        isPassword: true,
+                        validator: (v) {
+                          final base = Validators.newPassword(v,
+                              username: _username);
+                          if (base != null) return base;
+                          if (v == oldCtrl.text) {
+                            return 'New password must be different';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      AppTextField(
+                        label: 'Confirm New Password',
+                        hint: 'Re-enter the new password',
+                        prefixIcon: Icons.lock_reset_rounded,
+                        controller: confirmCtrl,
+                        isPassword: true,
+                        validator: (v) => Validators.confirm(v, newCtrl.text),
+                      ),
+                      const SizedBox(height: 16),
+                      if (error != null) ...[
+                        AuthBanner(message: error!),
+                        const SizedBox(height: 12),
+                      ],
+                      PrimaryButton(
+                        label: 'Update Password',
+                        isLoading: saving,
+                        onPressed: submit,
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            const SizedBox(height: 8),
-          ]),
-        ),
+          );
+        },
       ),
     ).whenComplete(() {
       oldCtrl.dispose();
       newCtrl.dispose();
+      confirmCtrl.dispose();
     });
   }
 
@@ -801,6 +901,11 @@ static const _levelIcons = {
             onPressed: () async {
               Navigator.pop(ctx);
               await UserSession.instance.signOut();
+              if (!mounted) return;
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (route) => false,
+              );
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,

@@ -2,7 +2,6 @@
 
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import '../widgets/common_widgets.dart';
 import '../services/api_service.dart';
 import 'home_screen.dart';
 import 'script_selection_screen.dart';

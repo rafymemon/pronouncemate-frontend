@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
-import '../services/user_session.dart';
 import '../theme/app_theme.dart';
+import '../utils/validators.dart';
+import '../widgets/auth_widgets.dart';
 import '../widgets/common_widgets.dart';
-import 'login_screen.dart';
+import 'verify_email_screen.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -44,21 +45,28 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
     if (!_formKey.currentState!.validate()) return;
     setState(() { _isLoading = true; _errorMessage = null; });
     try {
-      await AuthService.instance.signUp(
-        username: _usernameController.text,
-        email: _emailController.text,
+      final email = Validators.normalizeEmail(_emailController.text);
+      final result = await AuthService.instance.signUp(
+        username: _usernameController.text.trim(),
+        email: email,
         password: _passwordController.text,
       );
-      await UserSession.instance.setUsername(_usernameController.text);
-      await AuthService.instance.signOut();
       if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-        (route) => false,
-      );
-    } catch (e) {
+
+      // The account is created but inactive: the user must enter the
+      // 6-digit code we just emailed before they can sign in.
+      Navigator.of(context).pushReplacement(MaterialPageRoute(
+        builder: (_) => VerifyEmailScreen(
+          email: email,
+          codeJustSent: result['email_sent'] == true,
+        ),
+      ));
+    } on AuthException catch (e) {
       if (!mounted) return;
-      setState(() => _errorMessage = e.toString());
+      setState(() => _errorMessage = e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _errorMessage = 'Something went wrong. Please try again.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -119,27 +127,20 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
                             const SizedBox(height: 24),
                             AppTextField(label: 'Username', hint: 'e.g. ahmed_khan',
                               prefixIcon: Icons.person_outline, controller: _usernameController,
-                              validator: (v) => v == null || v.trim().isEmpty ? 'Please enter a username' : null),
+                              validator: Validators.username),
                             const SizedBox(height: 14),
                             AppTextField(label: 'Email Address', hint: 'you@example.com',
                               prefixIcon: Icons.email_outlined, controller: _emailController,
                               keyboardType: TextInputType.emailAddress,
-                              validator: (v) {
-                                if (v == null || v.trim().isEmpty) return 'Please enter an email';
-                                final email = v.trim();
-                                if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
-                                  return 'Enter a valid email address';
-                                }
-                                return null;
-                              }),
+                              validator: Validators.email),
                             const SizedBox(height: 14),
-                            AppTextField(label: 'Password', hint: 'Min. 6 characters',
+                            AppTextField(label: 'Password', hint: 'Min. 8 characters',
                               prefixIcon: Icons.lock_outline, isPassword: true, controller: _passwordController,
-                              validator: (v) => v == null || v.length < 6 ? 'Min. 6 characters required' : null),
+                              validator: (v) => Validators.newPassword(v, username: _usernameController.text)),
                             const SizedBox(height: 14),
                             AppTextField(label: 'Confirm Password', hint: 'Re-enter your password',
                               prefixIcon: Icons.lock_outline, isPassword: true, controller: _confirmController,
-                              validator: (v) => v != _passwordController.text ? 'Passwords do not match' : null),
+                              validator: (v) => Validators.confirm(v, _passwordController.text)),
 
                             const SizedBox(height: 20),
                             Container(
@@ -156,7 +157,7 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
                                   SizedBox(width: 10),
                                   Expanded(
                                     child: Text(
-                                      'You can set your proficiency level anytime from your Profile.',
+                                      "We'll email you a 6-digit code to verify your address. You can set your proficiency level anytime from your Profile.",
                                       style: TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.4),
                                     ),
                                   ),
@@ -165,21 +166,7 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
                             ),
                             const SizedBox(height: 20),
                             if (_errorMessage != null) ...[
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: Colors.red.shade50,
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: Colors.red.shade200),
-                                ),
-                                child: Row(children: [
-                                  Icon(Icons.error_outline_rounded, size: 18, color: Colors.red.shade600),
-                                  const SizedBox(width: 8),
-                                  Expanded(child: Text(_errorMessage!,
-                                      style: TextStyle(fontSize: 13, color: Colors.red.shade700))),
-                                ]),
-                              ),
+                              AuthBanner(message: _errorMessage!),
                               const SizedBox(height: 12),
                             ],
                             SizedBox(width: double.infinity, height: 52,

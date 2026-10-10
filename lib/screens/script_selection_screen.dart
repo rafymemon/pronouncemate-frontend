@@ -559,11 +559,6 @@ class _ScriptSelectionState extends State<ScriptSelectionScreen> {
   //  RESPONSIVE HELPERS
   // ═════════════════════════════════════════════════════
 
-  bool get _isWideScreen {
-    final width = MediaQuery.of(context).size.width;
-    return width > 600;
-  }
-
   int get _modeGridCrossAxisCount {
     final width = MediaQuery.of(context).size.width;
     if (width > 900) return 3;

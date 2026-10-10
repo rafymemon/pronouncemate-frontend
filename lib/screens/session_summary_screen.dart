@@ -10,6 +10,7 @@ import '../models/practice_models.dart';
 import '../models/word_status.dart';
 import '../config.dart';
 
+
 class SessionSummaryScreen extends StatefulWidget {
   final List<DisplayWord> words;
   final double sessionScore;
@@ -183,8 +184,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
       backgroundColor: AppColors.screenBackground,
       appBar: AppBar(
         title: const Text("Session Summary"),
-        backgroundColor: AppColors.brandBlue,
-        foregroundColor: Colors.white,
+        backgroundColor: AppColors.background,
+        foregroundColor: AppColors.textPrimary,
         automaticallyImplyLeading: false,
         elevation: 0,
       ),
@@ -200,8 +201,16 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.fromLTRB(24, 28, 24, 36),
                 decoration: BoxDecoration(
-                  color: AppColors.brandBlue,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppColors.softBorder),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: AppColors.cardShadow,
+                      blurRadius: 16,
+                      offset: Offset(0, 6),
+                    ),
+                  ],
                 ),
                 child: Column(children: [
                   _ScoreRing(
@@ -214,7 +223,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.16),
+                      color: gradeColor.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text("Grade  $grade",
@@ -251,21 +260,21 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                     children: [
                       _statTile(
                         icon: Icons.check_rounded,
-                        iconBg: const Color(0xFFDCFCE7),
-                        iconColor: const Color(0xFF16A34A),
+                        iconBg: AppColors.successLight,
+                        iconColor: AppColors.success,
                         value: '$correctCount',
                         label: 'Correct',
                       ),
                       _statTile(
                         icon: Icons.close_rounded,
-                        iconBg: const Color(0xFFFEE2E2),
-                        iconColor: const Color(0xFFDC2626),
+                        iconBg: AppColors.errorLight,
+                        iconColor: AppColors.error,
                         value: '$errorCount',
                         label: 'Errors',
                       ),
                       _statTile(
                         icon: Icons.format_list_numbered_rounded,
-                        iconBg: const Color(0xFFF1F5F9),
+                        iconBg: AppColors.surfaceVariant,
                         iconColor: AppColors.textSlate,
                         value: '$totalCount',
                         label: 'Total',
@@ -298,11 +307,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: AppColors.brandBlue.withOpacity(0.1),
+                            color: AppColors.accent.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: const Icon(Icons.graphic_eq_rounded,
-                              color: AppColors.brandBlue, size: 20),
+                              color: AppColors.accent, size: 20),
                         ),
                         const SizedBox(width: 12),
                         const Expanded(
@@ -313,7 +322,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                                   style: TextStyle(
                                       fontSize: 15,
                                       fontWeight: FontWeight.bold,
-                                      color: AppColors.brandBlue)),
+                                      color: AppColors.accent)),
                               SizedBox(height: 2),
                               Text(
                                   "Play your recording, then tap Correct to hear each error word, one per tap",
@@ -333,14 +342,14 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                               icon: Icons.mic,
                               audioUrl:
                                   AppConfig.mediaUrl(widget.recordingUrl),
-                              color: AppColors.brandBlue,
+                              color: AppColors.accent,
                             ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: _CorrectPronunciationButton(
                               items: pronunciationItems,
-                              color: AppColors.brandOlive,
+                              color: AppColors.primary,
                             ),
                           ),
                         ],
@@ -402,7 +411,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                           style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
-                              color: AppColors.brandBlue)),
+                              color: AppColors.accent)),
                       const SizedBox(height: 14),
                       Row(children: [
                         SizedBox(
@@ -455,19 +464,19 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFFF7E8),
+                      color: AppColors.warningLight,
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFFFE1B3)),
+                      border: Border.all(color: AppColors.warning),
                     ),
                     child: Row(children: [
                       Container(
                         padding: const EdgeInsets.all(8),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFFFEDCC),
+                        decoration: BoxDecoration(
+                          color: AppColors.warning.withOpacity(0.15),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(Icons.lightbulb_outline_rounded,
-                            color: Color(0xFFB45309), size: 20),
+                            color: AppColors.warning, size: 20),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -478,7 +487,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                                 style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600,
-                                    color: Color(0xFFB45309))),
+                                    color: AppColors.warning)),
                             const SizedBox(height: 2),
                             Text(
                                 _prettyType(
@@ -554,7 +563,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                         style: const TextStyle(
                             fontWeight: FontWeight.w600, fontSize: 13)),
                     style: TextButton.styleFrom(
-                        foregroundColor: AppColors.brandBlue),
+                        foregroundColor: AppColors.accent),
                   ),
                 ),
               ],
@@ -596,12 +605,12 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.green.shade50,
+                    color: AppColors.successLight,
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Row(children: [
-                    Icon(Icons.check_circle,
-                        color: Colors.green.shade600, size: 28),
+                    const Icon(Icons.check_circle,
+                        color: AppColors.success, size: 28),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
@@ -632,7 +641,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                           style: TextStyle(
                               fontSize: 15, fontWeight: FontWeight.w600)),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.brandOlive,
+                        backgroundColor: AppColors.primary,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 15),
                         elevation: 0,
@@ -657,8 +666,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                       label: const Text("Retry"),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: const BorderSide(color: AppColors.brandBlue),
-                        foregroundColor: AppColors.brandBlue,
+                        side: const BorderSide(color: AppColors.accent),
+                        foregroundColor: AppColors.accent,
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
                       ),
@@ -672,7 +681,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
                       icon: const Icon(Icons.home_rounded, size: 18),
                       label: const Text("Back to Home"),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.brandBlue,
+                        backgroundColor: AppColors.accent,
                         foregroundColor: Colors.white,
                         elevation: 0,
                         padding: const EdgeInsets.symmetric(vertical: 14),
@@ -711,7 +720,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
           style: const TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.bold,
-              color: AppColors.brandBlue)),
+              color: AppColors.accent)),
       const SizedBox(height: 2),
       Text(subtitle,
           style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
@@ -874,15 +883,15 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   Color _scoreChipColor(double score) {
-    if (score < 70) return const Color(0xFFFEE2E2);
-    if (score < 85) return const Color(0xFFFEF3C7);
-    return const Color(0xFFDCFCE7);
+    if (score < 70) return AppColors.errorLight;
+    if (score < 85) return AppColors.warningLight;
+    return AppColors.successLight;
   }
 
   Color _scoreChipTextColor(double score) {
-    if (score < 70) return const Color(0xFFDC2626);
-    if (score < 85) return const Color(0xFFB45309);
-    return const Color(0xFF16A34A);
+    if (score < 70) return AppColors.error;
+    if (score < 85) return AppColors.warning;
+    return AppColors.success;
   }
 
   String _prettyType(String type) {
@@ -899,9 +908,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   }
 
   Color _gradeColor(double score) {
-    if (score >= 80) return Colors.greenAccent;
-    if (score >= 60) return Colors.yellowAccent;
-    return Colors.redAccent;
+    if (score >= 80) return AppColors.success;
+    if (score >= 60) return AppColors.warning;
+    return AppColors.error;
   }
 
   /// Practice Mistakes → opens the same Focus Script the Dashboard shows.
@@ -1035,10 +1044,10 @@ class _ScoreRing extends StatelessWidget {
                     style: const TextStyle(
                         fontSize: 34,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white)),
+                        color: AppColors.textPrimary)),
                 const SizedBox(height: 2),
                 const Text("Overall Score",
-                    style: TextStyle(fontSize: 12, color: Colors.white70)),
+                    style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
               ]),
             ),
           ),
@@ -1061,7 +1070,7 @@ class _RingPainter extends CustomPainter {
     const stroke = 12.0;
 
     final bg = Paint()
-      ..color = Colors.white.withOpacity(0.18)
+      ..color = AppColors.softBorder
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
       ..strokeCap = StrokeCap.round;
@@ -1272,12 +1281,12 @@ class _PronunciationAudioButtonState extends State<PronunciationAudioButton> {
                 height: 18,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: AppColors.brandBlue,
+                  color: AppColors.accent,
                 ),
               )
             : Icon(
                 _isPlaying ? Icons.pause : Icons.volume_up_outlined,
-                color: AppColors.brandBlue,
+                color: AppColors.accent,
                 size: 18,
               ),
       ),

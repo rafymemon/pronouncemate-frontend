@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
-import '../services/auth_service.dart'; // Make sure ApiService is available or imported correctly
+import '../services/auth_service.dart';
 import '../services/user_session.dart';
 import '../theme/app_theme.dart';
+import '../utils/validators.dart';
+import '../widgets/auth_widgets.dart';
 import '../widgets/common_widgets.dart';
+import 'forgot_password_screen.dart';
 import 'main_shell.dart';
 import 'signup_screen.dart';
+import 'verify_email_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  /// Optional green banner, e.g. "Email verified! Sign in to continue."
+  final String? infoMessage;
+  const LoginScreen({super.key, this.infoMessage});
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
@@ -19,6 +25,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   bool _isLoading = false;
   bool _obscurePassword = true;
   String? _errorMessage;
+  String? _infoMessage;
   late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
@@ -26,6 +33,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
+    _infoMessage = widget.infoMessage;
     _animCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
     _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
     _slideAnim = Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero)
@@ -41,59 +49,23 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     super.dispose();
   }
 
-  void _sendPasswordReset() async {
-    final resetEmailController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Reset Password'),
-        content: TextField(
-          controller: resetEmailController,
-          keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(
-            hintText: 'Enter your registered email',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final email = resetEmailController.text.trim();
-              if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
-                if (!mounted) return;
-                setState(() => _errorMessage = 'Enter a valid registered email.');
-                return;
-              }
-              try {
-                await AuthService.instance.sendPasswordReset(email);
-                if (!ctx.mounted) return;
-                Navigator.of(ctx).pop();
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Password reset email sent. Check your inbox.')),
-                );
-              } catch (e) {
-                if (!mounted) return;
-                setState(() => _errorMessage = e.toString());
-              }
-            },
-            child: const Text('Send'),
-          ),
-        ],
+  void _openForgotPassword() {
+    final typed = _usernameController.text.trim();
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ForgotPasswordScreen(
+        initialEmail: typed.contains('@') ? typed : null,
       ),
-    ).whenComplete(() => resetEmailController.dispose());
+    ));
   }
 
   // ── Real API Integration ────────────────────────────────────────
   void _login() async {
     if (!_formKey.currentState!.validate()) return;
-    
-    setState(() { 
-      _isLoading = true; 
-      _errorMessage = null; 
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+      _infoMessage = null;
     });
 
     try {
@@ -104,19 +76,32 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
       if (!mounted) return;
 
-      if (result['token'] != null) {
-        await UserSession.instance.setUsername(_usernameController.text.trim());
-        // Navigate safely to the Home layout shell
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const MainShell()),
-          (route) => false,
-        );
-      } else {
-        setState(() => _errorMessage = result['error'] ?? 'Login failed');
-      }
-    } catch (e) {
+      // The server returns the real username even if the user typed an email.
+      final username = (result['username'] ?? _usernameController.text).toString().trim();
+      await UserSession.instance.setUsername(username);
       if (!mounted) return;
-      setState(() => _errorMessage = 'Cannot connect to server. Check your internet connection.');
+
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const MainShell()),
+        (route) => false,
+      );
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      if (e.isNotVerified) {
+        // Correct password, but the email was never verified: send a fresh
+        // code and open the verification screen.
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => VerifyEmailScreen(
+            email: e.email ?? '',
+            codeJustSent: false,
+          ),
+        ));
+      } else {
+        setState(() => _errorMessage = e.message);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _errorMessage = 'Something went wrong. Please try again.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -167,19 +152,25 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 Expanded(child: Divider(color: AppColors.divider, thickness: 1.2)),
                               ]),
                               const SizedBox(height: 28),
+                              if (_infoMessage != null) ...[
+                                AuthBanner(message: _infoMessage!, isError: false),
+                                const SizedBox(height: 16),
+                              ],
                               TextFormField(
                                 controller: _usernameController,
                                 textInputAction: TextInputAction.next,
-                                validator: (v) => v == null || v.trim().isEmpty ? 'Enter your username' : null,
+                                autocorrect: false,
+                                validator: (v) => Validators.required(v, 'Enter your username or email'),
                                 style: const TextStyle(color: AppColors.textPrimary, fontSize: 15),
-                                decoration: const InputDecoration(hintText: 'Username',
+                                decoration: const InputDecoration(hintText: 'Username or email',
                                   prefixIcon: Icon(Icons.person_outline_rounded, color: AppColors.accent)),
                               ),
                               const SizedBox(height: 16),
                               TextFormField(
                                 controller: _passwordController,
                                 obscureText: _obscurePassword,
-                                validator: (v) => v == null || v.length < 6 ? 'Min. 6 characters' : null,
+                                // No length rule on login: existing accounts may have older passwords.
+                                validator: (v) => (v == null || v.isEmpty) ? 'Enter your password' : null,
                                 style: const TextStyle(color: AppColors.textPrimary, fontSize: 15),
                                 decoration: InputDecoration(hintText: 'Password',
                                   prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppColors.accent),
@@ -189,25 +180,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                     onPressed: () => setState(() => _obscurePassword = !_obscurePassword))),
                               ),
                               Align(alignment: Alignment.centerRight,
-                                child: TextButton(onPressed: _sendPasswordReset,
+                                child: TextButton(onPressed: _openForgotPassword,
                                   child: const Text('Forgot Password', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)))),
-                              if (_errorMessage != null) ...[  
+                              if (_errorMessage != null) ...[
                                 const SizedBox(height: 8),
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red.shade50,
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: Colors.red.shade200),
-                                  ),
-                                  child: Row(children: [
-                                    Icon(Icons.error_outline_rounded, size: 18, color: Colors.red.shade600),
-                                    const SizedBox(width: 8),
-                                    Expanded(child: Text(_errorMessage!,
-                                        style: TextStyle(fontSize: 13, color: Colors.red.shade700))),
-                                  ]),
-                                ),
+                                AuthBanner(message: _errorMessage!),
                               ],
                               const SizedBox(height: 8),
                               SizedBox(width: double.infinity, height: 52,

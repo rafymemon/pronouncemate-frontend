@@ -1,6 +1,7 @@
 // lib/screens/active_session_screen.dart
 
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../theme/app_theme.dart';
@@ -786,13 +787,7 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
           ),
         ],
         if (_state == _SessionState.processing)
-          Expanded(
-              child: _btn(
-            label: 'Analyzing...',
-            icon: Icons.hourglass_empty,
-            color: Colors.grey.shade400,
-            onTap: null,
-          )),
+          Expanded(child: _processingButton()),
         if (_state == _SessionState.done) ...[
           Expanded(
             child: OutlinedButton.icon(
@@ -819,6 +814,40 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
           ),
         ],
       ]),
+    );
+  }
+
+  // Keeps the original active-session layout intact. Only the Evaluate
+  // button changes while the analysis request is running.
+  Widget _processingButton() {
+    return ElevatedButton(
+      onPressed: null,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: _olive,
+        disabledBackgroundColor: _olive,
+        foregroundColor: Colors.white,
+        disabledForegroundColor: Colors.white,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Text(
+            'Analyzing',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(width: 12),
+          const SizedBox(
+            width: 66,
+            height: 24,
+            child: _SlidingButtonWaveform(),
+          ),
+        ],
+      ),
     );
   }
 
@@ -891,4 +920,82 @@ class _ActiveSessionState extends State<ActiveSessionScreen> {
     _wsSub?.cancel();
     super.dispose();
   }
+}
+
+/// Small animated waveform shown only inside the button while analysis runs.
+class _SlidingButtonWaveform extends StatefulWidget {
+  const _SlidingButtonWaveform();
+
+  @override
+  State<_SlidingButtonWaveform> createState() => _SlidingButtonWaveformState();
+}
+
+class _SlidingButtonWaveformState extends State<_SlidingButtonWaveform>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 850),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) => CustomPaint(
+        painter: _SlidingButtonWaveformPainter(progress: _controller.value),
+      ),
+    );
+  }
+}
+
+class _SlidingButtonWaveformPainter extends CustomPainter {
+  final double progress;
+
+  const _SlidingButtonWaveformPainter({required this.progress});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const count = 13;
+    const barWidth = 3.0;
+    const gap = 2.0;
+    final totalWidth = count * barWidth + (count - 1) * gap;
+    final startX = (size.width - totalWidth) / 2;
+    final centerY = size.height / 2;
+
+    for (var i = 0; i < count; i++) {
+      final phase = (i / count * 2 * math.pi) - (progress * 2 * math.pi);
+      final wave = (0.5 + 0.5 * math.sin(phase)).abs();
+      final height = 5.0 + wave * (size.height - 7.0);
+      final opacity = 0.48 + 0.52 * wave;
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(
+          startX + i * (barWidth + gap),
+          centerY - height / 2,
+          barWidth,
+          height,
+        ),
+        const Radius.circular(2),
+      );
+      canvas.drawRRect(
+        rect,
+        Paint()..color = Colors.white.withOpacity(opacity),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SlidingButtonWaveformPainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }
